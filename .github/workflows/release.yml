@@ -25,15 +25,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 PyQt6-WebEngine>=6.12.0 pyinstaller
 
-      - name: Download FFmpeg binaries
-        run: |
-          mkdir -p ffmpeg/bin
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
-          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
-          Move-Item -Path "ffmpeg_temp/ffmpeg-*/bin/ffmpeg.exe" -Destination "ffmpeg/bin/ffmpeg.exe" -Force
-          Move-Item -Path "ffmpeg_temp/ffmpeg-*/bin/ffprobe.exe" -Destination "ffmpeg/bin/ffprobe.exe" -Force
-          Remove-Item -Recurse -Force ffmpeg_temp, ffmpeg.zip
-
       - name: Build with PyInstaller
         run: |
           pyinstaller yt-dlp-webui.spec --clean --noconfirm
@@ -72,36 +63,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 libfontconfig1
 
-      - name: Download FFmpeg
+      - name: Build with PyInstaller
         run: |
-          rm -rf ffmpeg
-          mkdir -p ffmpeg/bin
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          tar -xJf ffmpeg-release-amd64-static.tar.xz --strip-components=1
-          mv ffmpeg ffprobe ffmpeg/bin/
-          rm -f ffmpeg-release-amd64-static.tar.xz
+          pyinstaller yt-dlp-webui.spec --clean --noconfirm
 
       - name: Download appimagetool
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool.AppImage
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller yt-dlp-webui.spec --clean --noconfirm
-
       - name: Build AppImage
         run: |
           mkdir -p appdir/usr/bin
           cp dist/yt-dlp-webui/yt-dlp-webui appdir/usr/bin/
           chmod +x appdir/usr/bin/yt-dlp-webui
-          ./appimagetool.AppImage appdir dist/YT-DLP-WebUI-1.0.3-x86_64.AppImage
+          ./appimagetool.AppImage appdir dist/YT-DLP-WebUI-1.0.4-x86_64.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: yt-dlp-webui-linux-x86_64
-          path: dist/YT-DLP-WebUI-1.0.3-x86_64.AppImage
+          path: dist/YT-DLP-WebUI-1.0.4-x86_64.AppImage
 
   build-macos:
     name: Build macOS App
@@ -120,26 +102,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 PyQt6-WebEngine>=6.12.0 pyinstaller
 
-      - name: Download FFmpeg
-        run: |
-          mkdir -p ffmpeg/bin
-          brew install ffmpeg
-          cp $(brew --prefix ffmpeg)/bin/ffmpeg ffmpeg/bin/
-          cp $(brew --prefix ffmpeg)/bin/ffprobe ffmpeg/bin/
-
       - name: Build with PyInstaller
         run: |
           pyinstaller yt-dlp-webui.spec --clean --noconfirm
 
       - name: Create DMG
         run: |
-          hdiutil create -volname "YT-DLP WebUI" -srcfolder dist/yt-dlp-webui -ov -format UDZO dist/YT-DLP-WebUI-1.0.3-macOS.dmg
+          hdiutil create -volname "YT-DLP WebUI" -srcfolder dist/yt-dlp-webui -ov -format UDZO dist/YT-DLP-WebUI-1.0.4-macOS.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: yt-dlp-webui-macos
-          path: dist/YT-DLP-WebUI-1.0.3-macOS.dmg
+          path: dist/YT-DLP-WebUI-1.0.4-macOS.dmg
 
   release:
     name: Create GitHub Release
@@ -159,21 +134,20 @@ jobs:
         with:
           files: |
             dist/**/*
-          name: YT-DLP WebUI v1.0.3
-          tag_name: v1.0.3
+          name: YT-DLP WebUI v1.0.4
+          tag_name: v1.0.4
           draft: false
           prerelease: false
           body: |
-            # YT-DLP WebUI v1.0.3
+            # YT-DLP WebUI v1.0.4
 
             ## What's New
-            - Fixed CI build: added PyQt6-WebEngine dependency
-            - Fixed FFmpeg binary paths for all platforms
+            - Fixed CI build: add PyQt6-WebEngine dependency
             - Fixed spec file for cross-platform compatibility
-            - Fixed FFmpeg download URLs
+            - Fixed FFmpeg download URLs for all platforms
 
             ## Installation
-            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.3.exe` or portable `.zip`
+            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.4.exe` or portable `.zip`
             - **Linux**: Download `.AppImage`
             - **macOS**: Download `.dmg`
 
@@ -185,6 +159,6 @@ jobs:
 
             ## Requirements
             - Windows 10/11, macOS 10.15+, or Linux
-            - FFmpeg (bundled on Windows, install separately on macOS/Linux)
+            - FFmpeg (required for audio extraction and metadata embedding; install separately)
 
 ---
