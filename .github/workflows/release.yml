@@ -25,6 +25,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 pyinstaller
 
+      - name: Download FFmpeg binaries
+        run: |
+          mkdir -p ffmpeg/bin
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
+          Move-Item -Path "ffmpeg_temp/ffmpeg-*/bin/ffmpeg.exe" -Destination "ffmpeg/bin/ffmpeg.exe" -Force
+          Move-Item -Path "ffmpeg_temp/ffmpeg-*/bin/ffprobe.exe" -Destination "ffmpeg/bin/ffprobe.exe" -Force
+          Remove-Item -Recurse -Force ffmpeg_temp, ffmpeg.zip
+
       - name: Build with PyInstaller
         run: |
           pyinstaller yt-dlp-webui.spec --clean --noconfirm
@@ -63,6 +72,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 libfontconfig1
 
+      - name: Download FFmpeg
+        run: |
+          mkdir -p ffmpeg/bin
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xJf ffmpeg-release-amd64-static.tar.xz --strip-components=1
+          mv ffmpeg ffprobe ffmpeg/bin/
+          rm -f ffmpeg-release-amd64-static.tar.xz
+
       - name: Build with PyInstaller
         run: |
           pyinstaller yt-dlp-webui.spec --clean --noconfirm
@@ -93,6 +110,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 pyinstaller
+
+      - name: Download FFmpeg
+        run: |
+          mkdir -p ffmpeg/bin
+          brew install ffmpeg
+          cp $(brew --prefix ffmpeg)/bin/ffmpeg ffmpeg/bin/
+          cp $(brew --prefix ffmpeg)/bin/ffprobe ffmpeg/bin/
 
       - name: Build with PyInstaller
         run: |
@@ -145,9 +169,9 @@ jobs:
             - System tray with now-playing tooltip
             - Auto-update yt-dlp
             - Export/import playlists (JSON)
-            - Dark/Light/System themes
 
             ## Installation
+
             - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.0.exe` or portable `.zip`
             - **Linux**: Download `.AppImage`
             - **macOS**: Download `.dmg`
@@ -155,7 +179,7 @@ jobs:
             ## Quick Start
             1. Install and launch the app
             2. Search for a YouTube video or paste a URL
-            3. Click "Download" to add to queue
+            3. Click "Add to queue" to download
             4. Play downloaded media from the Library tab
 
             ## Requirements
@@ -163,5 +187,3 @@ jobs:
             - FFmpeg (bundled on Windows, install separately on macOS/Linux)
 
 ---
-
-Your release notes above.
