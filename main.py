@@ -2650,70 +2650,118 @@ class YTDLPApp(QMainWindow):
     def _page_video(self):
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(30, 30, 30, 30)
-        lay.setSpacing(16)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
 
-        top = QHBoxLayout()
-        back = QPushButton("← Back")
+        # Header bar
+        header = QFrame()
+        header.setFixedHeight(56)
+        header.setStyleSheet("QFrame { background: #181825; border-bottom: 1px solid #2a2a33; }")
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(20, 0, 20, 0)
+
+        back = GhostButton("← Back")
         back.clicked.connect(lambda: self.set_view("search"))
-        top.addWidget(back)
-        top.addStretch()
-        lay.addLayout(top)
+        hl.addWidget(back)
+        hl.addStretch()
+
+        lay.addWidget(header)
+
+        # Scrollable content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("QWidget { background: transparent; }")
+        cl = QVBoxLayout(scroll_widget)
+        cl.setContentsMargins(24, 20, 24, 20)
+        cl.setSpacing(20)
+
+        # Hero: thumbnail + info side by side
+        hero = QHBoxLayout()
+
+        self.video_thumb = QLabel()
+        self.video_thumb.setFixedSize(340, 192)
+        self.video_thumb.setStyleSheet("background:#181825; border-radius:8px;")
+        self.video_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero.addWidget(self.video_thumb)
+
+        info_col = QVBoxLayout()
+        info_col.setSpacing(8)
 
         self.video_info_label = QLabel("")
-        self.video_info_label.setStyleSheet("font-size:20px; font-weight:bold; color:#cdd6f4;")
+        self.video_info_label.setStyleSheet("font-size:22px; font-weight:bold; color:#e8e8ea;")
         self.video_info_label.setWordWrap(True)
-        lay.addWidget(self.video_info_label)
+        info_col.addWidget(self.video_info_label)
 
         self.video_sub_label = QLabel("")
-        self.video_sub_label.setStyleSheet("color:#a6adc8; font-size:13px;")
-        lay.addWidget(self.video_sub_label)
+        self.video_sub_label.setStyleSheet("color:#a0a0a8; font-size:13px;")
+        self.video_sub_label.setWordWrap(True)
+        info_col.addWidget(self.video_sub_label)
 
-        row = QHBoxLayout()
-        self.video_thumb = QLabel()
-        self.video_thumb.setFixedSize(320, 180)
-        self.video_thumb.setStyleSheet("background:#181825; border-radius:4px;")
-        self.video_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        row.addWidget(self.video_thumb)
-        row.addStretch()
-        lay.addLayout(row)
+        info_col.addStretch()
+        hero.addLayout(info_col, 1)
 
-        lay.addWidget(QLabel("Available formats"))
-        self.video_formats = QTableWidget()
-        self.video_formats.setColumnCount(6)
-        self.video_formats.setHorizontalHeaderLabels(["Resolution", "Codec", "Container", "Size", "Audio-only", ""])
-        self.video_formats.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.video_formats.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        lay.addWidget(self.video_formats)
+        cl.addLayout(hero)
+
+        # Formats as chips grid
+        cl.addWidget(QLabel("Available formats"))
+        self.video_formats_grid = QGridLayout()
+        self.video_formats_grid.setSpacing(8)
+        self.video_formats_grid.setContentsMargins(0, 0, 0, 0)
+        cl.addLayout(self.video_formats_grid)
 
         # Per-video overrides
-        ov = QGroupBox("Per-video overrides (leave blank to use global settings)")
-        ov.setFlat(True)
-        ovl = QFormLayout(ov)
+        ov = QFrame()
+        ov.setObjectName("card")
+        ov.setStyleSheet("QFrame#card { background: #181825; border: 1px solid #2a2a33; border-radius: 8px; padding: 16px; }")
+        ovl = QVBoxLayout(ov)
+        ovl.setContentsMargins(16, 16, 16, 16)
+        ovl.setSpacing(12)
+
+        ov_title = QLabel("Per-video overrides")
+        ov_title.setStyleSheet("QLabel { font-weight: bold; color:#e8e8ea; font-size: 13px; }")
+        ovl.addWidget(ov_title)
+
+        ov_row1 = QHBoxLayout()
+        ov_row1.addWidget(QLabel("Resolution cap:"))
         self.vid_res = QLineEdit()
         self.vid_res.setPlaceholderText("e.g. 1080")
+        self.vid_res.setFixedWidth(100)
+        ov_row1.addWidget(self.vid_res)
+        ov_row1.addWidget(QLabel("Container:"))
         self.vid_container = QComboBox()
         self.vid_container.addItems(["", "mp4", "mkv", "webm", "mov"])
+        self.vid_container.setFixedWidth(100)
+        ov_row1.addWidget(self.vid_container)
+        ov_row1.addStretch()
+        ovl.addLayout(ov_row1)
+
+        ov_row2 = QHBoxLayout()
         self.vid_audio_only = QCheckBox("Audio only")
         self.vid_embed_thumb = QCheckBox("Embed thumbnail")
         self.vid_embed_meta = QCheckBox("Embed metadata")
         self.vid_embed_subs = QCheckBox("Embed subtitles")
-        ovl.addRow("Resolution cap", self.vid_res)
-        ovl.addRow("Container", self.vid_container)
-        ovl.addRow("", self.vid_audio_only)
-        ovl.addRow("", self.vid_embed_thumb)
-        ovl.addRow("", self.vid_embed_meta)
-        ovl.addRow("", self.vid_embed_subs)
-        lay.addWidget(ov)
+        ov_row2.addWidget(self.vid_audio_only)
+        ov_row2.addWidget(self.vid_embed_thumb)
+        ov_row2.addWidget(self.vid_embed_meta)
+        ov_row2.addWidget(self.vid_embed_subs)
+        ov_row2.addStretch()
+        ovl.addLayout(ov_row2)
 
-        lay.addWidget(QLabel("Subtitle languages"))
+        cl.addWidget(ov)
+
+        # Subtitles
+        cl.addWidget(QLabel("Subtitle languages"))
         self.video_subs = QComboBox()
-        lay.addWidget(self.video_subs)
+        self.video_subs.setFixedWidth(150)
+        cl.addWidget(self.video_subs)
 
-        lay.addWidget(QLabel("Chapters"))
+        # Chapters
+        cl.addWidget(QLabel("Chapters"))
         self.video_chapters = QScrollArea()
         self.video_chapters.setWidgetResizable(True)
-        self.video_chapters.setFixedHeight(60)
+        self.video_chapters.setFixedHeight(44)
         self.video_chapters.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         chap_widget = QWidget()
         self.video_chapters_layout = QHBoxLayout(chap_widget)
@@ -2721,14 +2769,19 @@ class YTDLPApp(QMainWindow):
         self.video_chapters_layout.setSpacing(4)
         self.video_chapters_layout.addStretch()
         self.video_chapters.setWidget(chap_widget)
-        lay.addWidget(self.video_chapters)
+        cl.addWidget(self.video_chapters)
 
-        addb = QPushButton("Add to download queue")
-        addb.setObjectName("primary")
+        # Add to queue button
+        addb = PrimaryButton("Add to download queue")
+        addb.setFixedWidth(200)
         addb.clicked.connect(self._video_add_to_queue)
-        lay.addWidget(addb)
+        cl.addWidget(addb, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        lay.addStretch()
+        cl.addStretch()
+
+        scroll.setWidget(scroll_widget)
+        lay.addWidget(scroll)
+
         return w
 
     def _video_info_done(self, info):
@@ -2748,12 +2801,16 @@ class YTDLPApp(QMainWindow):
             nam.finished.connect(_on_thumb)
             nam.get(QNetworkRequest(QUrl(info["thumbnail"])))
 
-        # formats table
-        self.video_formats.setRowCount(0)
+        # formats as chips grid
+        while self.video_formats_grid.count():
+            child = self.video_formats_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
         vf = info.get("video_formats", [])
         if not vf:
             vf = info.get("combined_formats", [])
-        self.video_formats.setRowCount(len(vf))
+        cols = 4
         for i, f in enumerate(vf):
             h = f.get("height") or "?"
             fps = f.get("fps")
@@ -2762,20 +2819,20 @@ class YTDLPApp(QMainWindow):
             ext = f.get("ext", "")
             size = f.get("filesize")
             size_str = f"{(size/1024/1024):.1f} MB" if size else "?"
-            has_audio = f.get("has_audio", False)
-            self.video_formats.setItem(i, 0, QTableWidgetItem(f"{h}p {fps_str}"))
-            self.video_formats.setItem(i, 1, QTableWidgetItem(vcodec))
-            self.video_formats.setItem(i, 2, QTableWidgetItem(ext))
-            self.video_formats.setItem(i, 3, QTableWidgetItem(size_str))
-            audio_cb = QCheckBox()
-            audio_cb.setChecked(has_audio)
-            audio_cb.setEnabled(False)
-            self.video_formats.setCellWidget(i, 4, audio_cb)
-            addb = QPushButton("Select")
-            addb.setProperty("format", f)
-            addb.clicked.connect(self._video_select_format)
-            self.video_formats.setCellWidget(i, 5, addb)
-        self.video_formats.resizeColumnsToContents()
+
+            chip = QPushButton(f"{h}p{fps_str}  {ext}")
+            chip.setFixedSize(100, 40)
+            chip.setProperty("format", f)
+            chip.setCheckable(True)
+            chip.setStyleSheet(
+                "QPushButton { background: #24242e; border: 1px solid #2a2a33; border-radius: 6px; color: #a0a0a8; font-size: 11px; text-align: center; }"
+                "QPushButton:checked { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }"
+                "QPushButton:hover:!checked { background: #2a2a3e; color: #e8e8ea; }"
+            )
+            chip.clicked.connect(lambda checked, ff=f: self._video_select_format(ff))
+            self.video_formats_grid.addWidget(chip, i // cols, i % cols)
+
+        self.video_formats_grid.setColumnStretch(cols, 1)
 
         # subs
         self.video_subs.clear()
