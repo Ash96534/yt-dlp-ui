@@ -84,7 +84,6 @@ jobs:
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool.AppImage
-          chmod +x AppRun 2>/dev/null || true
 
       - name: Build with PyInstaller
         run: |
@@ -92,13 +91,16 @@ jobs:
 
       - name: Build AppImage
         run: |
-          bash build-linux.sh
+          mkdir -p appdir/usr/bin
+          cp dist/yt-dlp-webui/yt-dlp-webui appdir/usr/bin/
+          chmod +x appdir/usr/bin/yt-dlp-webui
+          ./appimagetool.AppImage appdir dist/YT-DLP-WebUI-1.0.3-x86_64.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: yt-dlp-webui-linux-x86_64
-          path: dist/*.AppImage
+          path: dist/YT-DLP-WebUI-1.0.3-x86_64.AppImage
 
   build-macos:
     name: Build macOS App
@@ -130,13 +132,13 @@ jobs:
 
       - name: Create DMG
         run: |
-          hdiutil create -volname "YT-DLP WebUI" -srcfolder dist/yt-dlp-webui -ov -format UDZO dist/YT-DLP-WebUI-1.0.0-macOS.dmg
+          hdiutil create -volname "YT-DLP WebUI" -srcfolder dist/yt-dlp-webui -ov -format UDZO dist/YT-DLP-WebUI-1.0.3-macOS.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: yt-dlp-webui-macos
-          path: dist/YT-DLP-WebUI-1.0.0-macOS.dmg
+          path: dist/YT-DLP-WebUI-1.0.3-macOS.dmg
 
   release:
     name: Create GitHub Release
@@ -156,28 +158,21 @@ jobs:
         with:
           files: |
             dist/**/*
-          name: YT-DLP WebUI v1.0.2
-          tag_name: v1.0.2
+          name: YT-DLP WebUI v1.0.3
+          tag_name: v1.0.3
           draft: false
           prerelease: false
           body: |
-            # YT-DLP WebUI v1.0.2
+            # YT-DLP WebUI v1.0.3
 
             ## What's New
-            - Integrated Chromium YouTube browser
-            - Download queue with pause/resume/retry/cancel
-            - Built-in media player with speed controls
-            - Music library with Artist Radio, Album Radio, Discovery Weekly
-            - Mood-based playlists (Chill, Workout, Party, Focus, Sleep)
-            - Multi-output audio (play to multiple devices simultaneously)
-            - Download MP3s directly from YouTube
-            - SQLite library with play count and watch history
-            - System tray with now-playing tooltip
-            - Auto-update yt-dlp
-            - Export/import playlists (JSON)
+            - Fixed CI build: added PyQt6-WebEngine dependency
+            - Fixed FFmpeg binary paths for all platforms
+            - Fixed spec file for cross-platform compatibility
+            - Fixed FFmpeg download URLs
 
             ## Installation
-            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.2.exe` or portable `.zip`
+            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.3.exe` or portable `.zip`
             - **Linux**: Download `.AppImage`
             - **macOS**: Download `.dmg`
 

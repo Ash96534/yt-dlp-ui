@@ -2,24 +2,21 @@
 
 import sys
 import os
+import glob
 
 block_cipher = None
 
-# Determine ffmpeg binary names based on platform
-if sys.platform == 'win32':
-    ffmpeg_bin = 'ffmpeg/bin/ffmpeg.exe'
-    ffprobe_bin = 'ffmpeg/bin/ffprobe.exe'
-else:
-    ffmpeg_bin = 'ffmpeg/bin/ffmpeg'
-    ffprobe_bin = 'ffmpeg/bin/ffprobe'
+# Collect ffmpeg binaries if they exist (downloaded during CI)
+binaries = []
+for pattern in ['ffmpeg/bin/ffmpeg*', 'ffmpeg/bin/ffprobe*']:
+    for f in glob.glob(pattern):
+        if os.path.isfile(f):
+            binaries.append((f, 'ffmpeg/bin'))
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[
-        (ffmpeg_bin, 'ffmpeg/bin'),
-        (ffprobe_bin, 'ffmpeg/bin'),
-    ],
+    binaries=binaries,
     datas=[
         ('config/config.default.json', 'config'),
     ],
@@ -60,8 +57,8 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # True = console window, False = GUI only
-    icon=None,  # Add icon path here: 'build/icon.ico'
+    console=False,
+    icon=None,
     version='file_version_info.txt',
 )
 
