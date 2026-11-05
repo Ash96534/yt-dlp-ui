@@ -393,60 +393,170 @@ CREATE INDEX idx_jobs_status ON download_jobs(status);
 
 ---
 
-## 10. Implementation Roadmap (Phases)
+## 10. Version Roadmap (v1.1 → v2.0)
 
-| Phase | Goal | Key Deliverables |
-|-------|------|------------------|
-| **P1 — Foundation** | Repo setup, PyQt6 shell, Python backend modules, config system | `main.py`, `backend/`, `ui/`, `config/`, `config.default.json`, requirements.txt, first build |
-| **P2 — Extraction** | YouTube search + video info | `extractor.py`, search view, video detail view, format table |
-| **P3 — Download Engine** | yt-dlp integration, queue, progress | `downloader.py`, `queue.py`, queue view, pause/resume/cancel |
-| **P4 — Configuration UI** | Global + per-download settings | Settings view, config drawer on video detail, defaults merge logic |
-| **P5 — Library** | SQLite index, file management | `library.py`, library view, open-locate-delete-redownload |
-| **P6 — Polish** | Theming, notifications, tray, updater, packaging | PyInstaller spec, ffmpeg bundling, auto-update, NSIS/AppImage/DMG installer |
+| Version | Theme | Target | Key Upgrades |
+|---------|-------|--------|--------------|
+| **v1.1** | Core stability | 4 weeks | Resume interrupted downloads, per-job bandwidth throttling, playback position memory, search history chips, empty states, accent color picker, config validation |
+| **v1.2** | Player & library polish | 6 weeks | Variable playback speed (0.25x–4x), gapless playback, crossfade, library rescan/import, duplicate detection by hash, file integrity verification, inline tag editing, cover art gallery |
+| **v1.3** | Discovery & curation | 6 weeks | Search filters (duration, date, type), trending by region, channel subscription/follow, related videos sidebar, watch-later/favorites filtering, playlist export (M3U/JSON/CSV) |
+| **v1.4** | Power-user & ops | 6 weeks | Per-download format overrides, settings profiles, CLI flags, env var overrides, per-domain rate limits, queue priority drag-and-drop, download scheduling |
+| **v2.0** | Platform & scale | 8 weeks | Multi-connection segmented downloads, smart playlists (auto-mixes), lyrics panel, gapless/crossfade audio normalization, chapter markers, mini player, Bluetooth auto-switch, cloud library backup, command palette |
+
+> **v1.0.0** (shipped) — Pure Python PyQt6 release. Electron/Node/React fully removed. Single-file `main.py` with yt-dlp downloader, download queue, media player, SQLite library, multi-output audio, system tray, PyInstaller packaging.
 
 ---
 
-## 11. Risks & Mitigation
+### 10.1 v1.1 — Core Stability (4 weeks)
+
+**Goal:** Harden the v1.0.0 foundation; close the most common friction points.
+
+| # | Feature | Deliverable | Acceptance Criteria |
+|---|---------|-------------|---------------------|
+| 1.1 | Resume interrupted downloads | `_resume_download()` in `backend/downloader.py`; requeue `.part` files on restart | Interrupted download resumes instead of restarting from 0% |
+| 1.2 | Per-job bandwidth throttling | KB/s input on each queue row; stored in job config | Individual job can be capped without affecting others |
+| 1.3 | Playback position memory | Improve `playback_positions` table usage in `main.py` | Reopening a file resumes at saved ms position |
+| 1.4 | Search history persistence | Save recent queries to `data/config.json`; render as chips | Search bar shows 5 most recent queries as clickable chips |
+| 1.5 | Empty states | Illustration + primary CTA on Library, Search, Queue when empty | Every view has a non-blank first-time state |
+| 1.6 | Accent color picker | Settings > Appearance > color picker; QSS regenerated at runtime | Picking a color updates accent instantly without restart |
+| 1.7 | Config validation | Warn on invalid values in Settings; fall back to defaults | Invalid merge_output_format shows warning, app continues |
+
+**Success criteria:** Zero data loss on interrupted downloads; settings apply instantly; no blank first-run views.
+
+---
+
+### 10.2 v1.2 — Player & Library Polish (6 weeks)
+
+**Goal:** Make the media player and library feel like a dedicated music app.
+
+| # | Feature | Deliverable | Acceptance Criteria |
+|---|---------|-------------|---------------------|
+| 2.1 | Variable playback speed | Speed dropdown 0.25x – 4.0x on player bar | `QMediaPlayer.setPlaybackRate()` reflects selection |
+| 2.2 | Gapless playback | Pre-load next track while current plays | No audible gap between library tracks |
+| 2.3 | Crossfade | Fade-out/fade-in between tracks (adjustable 0–10s) | Smooth transition between consecutive tracks |
+| 2.4 | Library rescan / import | "Import Folder" dialog; scan disk for media files; add to SQLite | Existing downloads appear in Library without re-download |
+| 2.5 | Duplicate detection | SHA-256 file hash on `library_add()`; skip if hash exists | Same file not added twice |
+| 2.6 | File integrity verification | Post-download hash compare against recorded hash | Corrupt downloads flagged as failed |
+| 2.7 | Inline tag editing | Edit title/artist/album/genre/year on Library row; write via FFmpegMetadata | Saved tags persist in SQLite and file metadata |
+| 2.8 | Cover art gallery | Grid view of library items with cover art thumbnails | Visual browsing of downloaded media |
+
+**Success criteria:** Player feels gapless; library imports existing files without duplicates; tags editable in-app.
+
+---
+
+### 10.3 v1.3 — Discovery & Curation (6 weeks)
+
+**Goal:** Turn the app into a discovery tool, not just a downloader.
+
+| # | Feature | Deliverable | Acceptance Criteria |
+|---|---------|-------------|---------------------|
+| 3.1 | Search filters | Duration, upload date, video type, license filters on Search view | Filter chips narrow `ytsearch` results |
+| 3.2 | Trending by region | Region dropdown + "Refresh Trending" | Top Charts shows localized trending |
+| 3.3 | Channel subscription | "Follow channel" on video detail; poll for new uploads | Subscribed channels appear in a Subscriptions view |
+| 3.4 | Related videos | Sidebar on Video Detail with `related` extraction | Clicking related opens its detail view |
+| 3.5 | Watch-later / favorites filtering | Toggle chips on Library view | Filter library to liked / watch-later only |
+| 3.6 | Playlist export | Export library/playlist to M3U, JSON, CSV | Exported file opens in external players |
+
+**Success criteria:** Users can find new content inside the app; curated lists are filterable and exportable.
+
+---
+
+### 10.4 v1.4 — Power-User & Ops (6 weeks)
+
+**Goal:** Serve advanced users and headless/automated workflows.
+
+| # | Feature | Deliverable | Acceptance Criteria |
+|---|---------|-------------|---------------------|
+| 4.1 | Per-download format overrides | Format drawer on Video Detail; overrides stored per job | One video downloads as MP3, another as 1080p MP4 |
+| 4.2 | Settings profiles | Profile switcher (work/home/mobile); each with own config | Switching profiles swaps download path, resolution, theme |
+| 4.3 | CLI flags | `python main.py --url ... --format mp3 --path ...` | Headless downloads without opening GUI |
+| 4.4 | Env var overrides | `YTDLP_DOWNLOAD_PATH`, `YTDLP_RESOLUTION_CAP`, etc. | Environment variables override config defaults |
+| 4.5 | Per-domain rate limits | Domain-specific KB/s caps in Settings > Network | youtube.com capped separately from other domains |
+| 4.6 | Queue priority drag-and-drop | Reorder pending jobs in Queue view | Higher jobs download first |
+| 4.7 | Download scheduling | Date/time picker on job creation; start at scheduled time | Job stays queued until start time |
+
+**Success criteria:** Headless operation works; power users can fine-tune every download; queue is fully controllable.
+
+---
+
+### 10.5 v2.0 — Platform & Scale (8 weeks)
+
+**Goal:** Premium media-app features and cross-device reliability.
+
+| # | Feature | Deliverable | Acceptance Criteria |
+|---|---------|-------------|---------------------|
+| 5.1 | Multi-connection segmented downloads | Parallel fragment downloads per job | Large files download faster on high-bandwidth connections |
+| 5.2 | Smart playlists | Auto-generated mixes by genre/year/play count | "Discovery Weekly"-style playlists update automatically |
+| 5.3 | Lyrics panel | Fetch and display synced lyrics (floating window) | Lyrics scroll with playback position |
+| 5.4 | Audio normalization | Volume leveling across tracks | No jarring volume jumps between videos |
+| 5.5 | Chapter markers | Chapter list + seek UI on Video Detail | Long videos/podcasts navigable by chapter |
+| 5.6 | Mini player | Floating, always-on-top, frameless window | Controls visible while working in other apps |
+| 5.7 | Bluetooth auto-switch | Detect audio device connect; route output automatically | Playback moves to newly connected Bluetooth device |
+| 5.8 | Cloud library backup | Encrypted backup of `library.db` + config to user-selected cloud | Library recoverable after machine loss |
+| 5.9 | Command palette | Ctrl+K quick-search across views | Jump to any view, search, or action without menus |
+
+**Success criteria:** App competes with dedicated media players; library is recoverable; power navigation via keyboard.
+
+---
+
+## 11. Release Cadence
+
+| Version | Estimated | Merge Strategy |
+|---------|-----------|----------------|
+| v1.1 | 4 weeks | Weekly patch cuts; one minor release |
+| v1.2 | 6 weeks | Bi-weekly cuts |
+| v1.3 | 6 weeks | Bi-weekly cuts |
+| v1.4 | 6 weeks | Bi-weekly cuts |
+| v2.0 | 8 weeks | Release candidate cycle (2 RCs) |
+
+Each version ships a GitHub release with PyInstaller-built artifacts (NSIS Windows, AppImage Linux, DMG macOS) plus `pip`-installable source.
+
+---
+
+## 12. Risks & Mitigation
 
 | Risk | Mitigation |
 |------|------------|
-| YouTube changes break extraction | Pin `yt-dlp` version, add one-click "Update yt-dlp" in settings, fallback error message telling user to update |
-| ffmpeg not installed | Ship ffmpeg binaries per platform in `ffmpeg/`; validate `ffmpeg_location` on startup; show setup wizard if missing |
-| Large playlists freeze UI | `extract_flat` for listing, lazy-load pages, cap default playlist extract count with user override |
-| Copyright / ToS concerns | Include disclaimer: tool for personal use / content you own or have rights to; respect YouTube ToS |
-| UI freezing during large downloads | Offload downloads to `QThread` workers; keep UI thread responsive |
-| Windows path length / Unicode | Normalize filenames via `yt-dlp` `restrictfilenames` option; use `os.path` carefully |
+| YouTube changes break extraction | Pin `yt-dlp` version; one-click "Update yt-dlp" in Settings; fallback error message |
+| ffmpeg not installed | Ship `ffmpeg/bin/` per platform; validate `ffmpeg_location` on startup; setup wizard if missing |
+| Large playlists freeze UI | `extract_flat` for listing; lazy-load pages; cap default playlist extract count with override |
+| Copyright / ToS concerns | Disclaimer: personal use / content you own or have rights to; respect YouTube ToS |
+| UI freezing during large downloads | `QThread` workers; keep UI thread responsive |
+| Windows path length / Unicode | `restrictfilenames` option; careful `os.path` usage |
+| Database corruption on crash | WAL journal mode (already set in `backend/library.py`); periodic backup |
+| Cloud backup privacy | Client-side encryption before upload; user controls destination |
 
 ---
 
-## 12. Testing Strategy
+## 13. Testing Strategy
 
-- **Unit tests (Python):** `config.py` validation/merge, `downloader.py` hook emission, `queue.py` concurrency/pause/resume, `library.py` CRUD
-- **Integration tests:** End-to-end download of a short public video; verify file exists, metadata embedded, DB row created
-- **UI tests (Playwright):** Search returns results, add-to-queue creates job, progress bar updates, pause then resume completes
-- **Contract tests:** Verify IPC payload shapes match the API matrix in §7
-- **CI:** GitHub Actions — lint (ruff/prettier), unit tests, build on Windows/macOS/Linux
+- **Unit tests (Python):** `config.py` validation/merge, `downloader.py` hook emission, `queue.py` concurrency/pause/resume, `library.py` CRUD, hash duplicate detection
+- **Integration tests:** End-to-end download of a short public video; verify file exists, metadata embedded, DB row created; resume partial download
+- **UI tests:** Search returns results; add-to-queue creates job; progress bar updates; pause then resume completes; settings apply instantly
+- **Contract tests:** Verify backend RPC payload shapes match §7 API matrix
+- **CI:** GitHub Actions — lint (ruff), unit tests, PyInstaller build on Windows/macOS/Linux
 
 ---
 
-## 13. Build & Distribution
+## 14. Build & Distribution
 
 - PyInstaller (`*.spec`) with NSIS (Windows), DMG (macOS), AppImage/DEB (Linux)
 - Single-file Python app packaged into a standalone executable per platform
-- Auto-update via GitHub releases
+- Auto-update via GitHub releases (v1.0.0+)
 - Code signing (optional, for Windows SmartTrust / macOS Gatekeeper)
 
 ---
 
-## 14. Immediate Next Steps
+## 15. Immediate Next Steps
 
 1. Verify `main.py`, `backend/`, and `ui/` import cleanly; run `python main.py`
 2. Confirm `requirements.txt` and `pyproject.toml` dependency versions resolve
 3. Test PyInstaller build with `yt-dlp-webui.spec` on target platform
 4. Build the search + video detail UI and connect to `extractor.py`
 5. Wire up the download queue and a test download
+6. Begin v1.1: resume interrupted downloads + per-job bandwidth throttling
 
 Would you like me to:
-- **Generate starter code** for any of these modules (e.g., the Python backend `config.py` + `downloader.py`, or PyQt6 UI widgets)?
-- **Choose between PyQt6 and another Python GUI toolkit** for the UI?
-- **Add OAuth/login** for age-restricted or private content (requires cookies from browser / YouTube Data API)?
+- **Generate starter code** for any v1.1 module (e.g., resume logic, bandwidth throttling, empty states)?
+- **Create a GitHub Release v1.1 milestone** with issues for each planned upgrade?
+- **Set up CI builds** for PyInstaller artifacts on Windows/macOS/Linux?
