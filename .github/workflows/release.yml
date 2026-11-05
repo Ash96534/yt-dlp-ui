@@ -74,6 +74,7 @@ jobs:
 
       - name: Download FFmpeg
         run: |
+          rm -rf ffmpeg
           mkdir -p ffmpeg/bin
           wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
           tar -xJf ffmpeg-release-amd64-static.tar.xz --strip-components=1
