@@ -496,7 +496,7 @@ class YTDLPApp(QMainWindow):
         cur = self.player_repeat_mode
         nxt = modes[(modes.index(cur) + 1) % len(modes)]
         self.player_repeat_mode = nxt
-        self.player_repeat.setText(f"🔁 Repeat: {nxt.title()}")
+        self.player_repeat.setText(f"Repeat: {nxt.title()}")
         if cur == "all" and nxt == "one":
             self.player_shuffle.setChecked(False)
 
@@ -638,7 +638,7 @@ class YTDLPApp(QMainWindow):
             self._sleep_timer.stop()
             self._sleep_minutes = 0
             self.player_sleep.setChecked(False)
-            self.player_sleep.setText("💤 Sleep")
+            self.player_sleep.setText("Sleep")
             self.show_toast("Sleep Timer", "Cancelled")
         else:
             minutes, ok = QInputDialog.getInt(self, "Sleep Timer", "Minutes until stop:", 30, 1, 120)
@@ -646,7 +646,7 @@ class YTDLPApp(QMainWindow):
                 self._sleep_minutes = minutes * 60
                 self._sleep_timer.start(1000)
                 self.player_sleep.setChecked(True)
-                self.player_sleep.setText(f"💤 {minutes}m")
+                self.player_sleep.setText(f"Sleep {minutes}m")
                 self.show_toast("Sleep Timer", f"Stops in {minutes} min")
 
     def _sleep_timer_tick(self):
@@ -655,11 +655,11 @@ class YTDLPApp(QMainWindow):
             self._sleep_timer.stop()
             self.player_stop()
             self.player_sleep.setChecked(False)
-            self.player_sleep.setText("💤 Sleep")
+            self.player_sleep.setText("Sleep")
             self.show_toast("Sleep Timer", "Playback stopped")
         else:
             m, s = divmod(self._sleep_minutes, 60)
-            self.player_sleep.setText(f"💤 {m}m {s}s")
+            self.player_sleep.setText(f"Sleep {m}m {s}s")
 
     def _set_eq(self, text):
         mode = text.replace("EQ: ", "").lower()
@@ -853,15 +853,15 @@ class YTDLPApp(QMainWindow):
     def _player_state_changed(self, state):
         if self.player_play_btn:
             if state == QMediaPlayer.PlaybackState.PlayingState:
-                self.player_play_btn.setText("⏸ Pause")
+                self.player_play_btn.setText("Pause")
                 self.player_timer.start()
             else:
-                self.player_play_btn.setText("▶ Play")
+                self.player_play_btn.setText("Play")
                 self.player_timer.stop()
 
     def _player_error(self, error, error_string):
         QMessageBox.warning(self, "Player Error", error_string)
-        self.player_play_btn.setText("▶ Play")
+        self.player_play_btn.setText("Play")
 
     def _open_mini_player(self):
         if not hasattr(self, "mini_player") or self.mini_player is None:
@@ -943,15 +943,15 @@ class YTDLPApp(QMainWindow):
 
         self.nav_buttons = {}
         nav_items = [
-            ("browser", "Browser", "🌐"),
-            ("search", "Search", "🔍"),
-            ("trending", "Trending", "🔥"),
-            ("music", "Music", "🎵"),
-            ("charts", "Top Charts", "📊"),
-            ("video", "Video", "▶️"),
-            ("queue", "Queue", "⬇️"),
-            ("library", "Library", "📚"),
-            ("settings", "Settings", "⚙️"),
+            ("browser", "Browser", "Browser"),
+            ("search", "Search", "Search"),
+            ("trending", "Trending", "Trending"),
+            ("music", "Music", "Music"),
+            ("charts", "Top Charts", "Charts"),
+            ("video", "Video", "Video"),
+            ("queue", "Queue", "Queue"),
+            ("library", "Library", "Library"),
+            ("settings", "Settings", "Settings"),
         ]
         for key, label, icon in nav_items:
             btn = QPushButton(f"{icon}  {label}")
@@ -1006,34 +1006,34 @@ class YTDLPApp(QMainWindow):
         ctrl.setSpacing(4)
 
         row1 = QHBoxLayout()
-        self.player_prev_btn = QPushButton("⏮")
-        self.player_prev_btn.setFixedWidth(40)
+        self.player_prev_btn = QPushButton("Previous")
+        self.player_prev_btn.setFixedWidth(45)
         self.player_prev_btn.setToolTip("Previous")
         self.player_prev_btn.clicked.connect(self._playlist_prev)
         row1.addWidget(self.player_prev_btn)
 
-        self.player_play_btn = QPushButton("▶ Play")
+        self.player_play_btn = QPushButton("Play")
         self.player_play_btn.setFixedWidth(70)
         self.player_play_btn.clicked.connect(self._player_toggle)
         row1.addWidget(self.player_play_btn)
 
-        self.player_next_btn = QPushButton("⏭")
-        self.player_next_btn.setFixedWidth(40)
+        self.player_next_btn = QPushButton("Next")
+        self.player_next_btn.setFixedWidth(45)
         self.player_next_btn.setToolTip("Next")
         self.player_next_btn.clicked.connect(self._playlist_next)
         row1.addWidget(self.player_next_btn)
 
-        self.player_stop_btn = QPushButton("⏹ Stop")
+        self.player_stop_btn = QPushButton("Stop")
         self.player_stop_btn.setFixedWidth(70)
         self.player_stop_btn.clicked.connect(self._player_stop)
         row1.addWidget(self.player_stop_btn)
 
-        self.player_skip_back = QPushButton("⏪ -10s")
+        self.player_skip_back = QPushButton("Skip -10s")
         self.player_skip_back.setFixedWidth(60)
         self.player_skip_back.clicked.connect(lambda: self._player_skip(-10000))
         row1.addWidget(self.player_skip_back)
 
-        self.player_skip_fwd = QPushButton("10s ⏩")
+        self.player_skip_fwd = QPushButton("Skip +10s")
         self.player_skip_fwd.setFixedWidth(60)
         self.player_skip_fwd.clicked.connect(lambda: self._player_skip(10000))
         row1.addWidget(self.player_skip_fwd)
@@ -1050,14 +1050,14 @@ class YTDLPApp(QMainWindow):
         self.player_autoplay.setStyleSheet("color:#a6adc8; font-size:11px;")
         row1.addWidget(self.player_autoplay)
 
-        self.player_shuffle = QPushButton("🔀 Shuffle")
+        self.player_shuffle = QPushButton("Shuffle")
         self.player_shuffle.setCheckable(True)
         self.player_shuffle.setFixedWidth(70)
         self.player_shuffle.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.player_shuffle.clicked.connect(lambda: self.player_shuffle.setChecked(not self.player_shuffle.isChecked()))
         row1.addWidget(self.player_shuffle)
 
-        self.player_repeat = QPushButton("🔁 Repeat: All")
+        self.player_repeat = QPushButton("Repeat: All")
         self.player_repeat.setCheckable(True)
         self.player_repeat.setFixedWidth(85)
         self.player_repeat.setStyleSheet("color:#a6adc8; font-size:11px;")
@@ -1065,7 +1065,7 @@ class YTDLPApp(QMainWindow):
         self.player_repeat.clicked.connect(self._toggle_repeat)
         row1.addWidget(self.player_repeat)
 
-        self.player_sleep = QPushButton("💤 Sleep")
+        self.player_sleep = QPushButton("Sleep")
         self.player_sleep.setCheckable(True)
         self.player_sleep.setFixedWidth(60)
         self.player_sleep.setStyleSheet("color:#a6adc8; font-size:11px;")
@@ -1082,39 +1082,39 @@ class YTDLPApp(QMainWindow):
         self.player_eq.currentTextChanged.connect(self._set_eq)
         row1.addWidget(self.player_eq)
 
-        self.player_mini = QPushButton("🪟 Mini")
-        self.player_mini.setFixedWidth(55)
+        self.player_mini = QPushButton("Mini Player")
+        self.player_mini.setFixedWidth(70)
         self.player_mini.setToolTip("Open mini player")
         self.player_mini.clicked.connect(self._open_mini_player)
         row1.addWidget(self.player_mini)
 
-        self.btn_lyrics = QPushButton("📝 Lyrics")
+        self.btn_lyrics = QPushButton("Lyrics")
         self.btn_lyrics.setFixedWidth(60)
         self.btn_lyrics.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.btn_lyrics.clicked.connect(self._toggle_lyrics_panel)
         row1.addWidget(self.btn_lyrics)
 
-        self.btn_album_art = QPushButton("🖼 Art")
+        self.btn_album_art = QPushButton("Art")
         self.btn_album_art.setFixedWidth(45)
         self.btn_album_art.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.btn_album_art.clicked.connect(self._open_album_art_viewer)
         row1.addWidget(self.btn_album_art)
 
-        self.btn_crossfade = QPushButton("↔ Crossfade")
+        self.btn_crossfade = QPushButton("Crossfade")
         self.btn_crossfade.setCheckable(True)
         self.btn_crossfade.setFixedWidth(70)
         self.btn_crossfade.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.btn_crossfade.clicked.connect(self._toggle_crossfade)
         row1.addWidget(self.btn_crossfade)
 
-        self.btn_gapless = QPushButton("⏭ Gapless")
+        self.btn_gapless = QPushButton("Gapless")
         self.btn_gapless.setCheckable(True)
         self.btn_gapless.setFixedWidth(60)
         self.btn_gapless.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.btn_gapless.clicked.connect(self._toggle_gapless)
         row1.addWidget(self.btn_gapless)
 
-        self.btn_recent = QPushButton("🕓 Recent")
+        self.btn_recent = QPushButton("Recent")
         self.btn_recent.setFixedWidth(55)
         self.btn_recent.setStyleSheet("color:#a6adc8; font-size:11px;")
         self.btn_recent.clicked.connect(self._show_recently_played)
@@ -1241,7 +1241,7 @@ class YTDLPApp(QMainWindow):
         self.btn_back.clicked.connect(lambda: self.browser.back())
         bl.addWidget(self.btn_back)
 
-        self.btn_fwd = QPushButton("▶")
+        self.btn_fwd = QPushButton("Forward")
         self.btn_fwd.setFixedSize(32, 32)
         self.btn_fwd.setToolTip("Forward")
         self.btn_fwd.clicked.connect(lambda: self.browser.forward())
@@ -1564,7 +1564,7 @@ class YTDLPApp(QMainWindow):
 
         self.music_library = QTableWidget()
         self.music_library.setColumnCount(8)
-        self.music_library.setHorizontalHeaderLabels(["❤", "Cover", "Title", "Artist", "♫ Radio", "Album", "Play", "Del"])
+        self.music_library.setHorizontalHeaderLabels(["Like", "Cover", "Title", "Artist", "Radio", "Album", "Play", "Delete"])
         self.music_library.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.music_library.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.music_library.setMaximumHeight(200)
@@ -1894,10 +1894,10 @@ class YTDLPApp(QMainWindow):
         for i, it in enumerate(rows):
             self.music_library.setRowHeight(i, 50)
             # Like
-            likeb = QPushButton("❤" if it["is_liked"] == "1" else "🤍")
+            likeb = QPushButton("Liked" if it["is_liked"] == "1" else "Like")
             likeb.setProperty("id", it["id"])
-            likeb.setFixedWidth(32)
-            likeb.setStyleSheet("QPushButton { border: none; font-size: 16px; } QPushButton:hover { color: #f38ba8; }")
+            likeb.setFixedWidth(45)
+            likeb.setStyleSheet("QPushButton { border: none; font-size: 11px; } QPushButton:hover { color: #f38ba8; }")
             likeb.clicked.connect(self._music_toggle_like)
             self.music_library.setCellWidget(i, 0, likeb)
             # Cover
@@ -1920,18 +1920,18 @@ class YTDLPApp(QMainWindow):
             self.music_library.setItem(i, 2, QTableWidgetItem(it["title"] or ""))
             self.music_library.setItem(i, 3, QTableWidgetItem(it["music_artist"] or ""))
             # Artist Radio button
-            ardb = QPushButton("📻")
+            ardb = QPushButton("Radio")
             ardb.setProperty("artist", it["music_artist"] or "")
-            ardb.setFixedWidth(32)
-            ardb.setStyleSheet("QPushButton { border: none; font-size: 14px; } QPushButton:hover { color: #89b4fa; }")
+            ardb.setFixedWidth(45)
+            ardb.setStyleSheet("QPushButton { border: none; font-size: 11px; } QPushButton:hover { color: #89b4fa; }")
             ardb.clicked.connect(self._artist_radio_from_btn)
             self.music_library.setCellWidget(i, 4, ardb)
             self.music_library.setItem(i, 5, QTableWidgetItem(it["music_album"] or ""))
-            playb = QPushButton("▶")
+            playb = QPushButton("Play")
             playb.setProperty("path", it["filepath"])
             playb.clicked.connect(self._music_play)
             self.music_library.setCellWidget(i, 6, playb)
-            delb = QPushButton("✕")
+            delb = QPushButton("Delete")
             delb.setProperty("id", it["id"])
             delb.clicked.connect(self._music_del)
             self.music_library.setCellWidget(i, 7, delb)
@@ -2253,7 +2253,7 @@ class YTDLPApp(QMainWindow):
         btn.clicked.connect(self.refresh_library)
         top.addWidget(btn)
 
-        playall_btn = QPushButton("▶ Play All")
+        playall_btn = QPushButton("Play All")
         playall_btn.setObjectName("primary")
         playall_btn.clicked.connect(self._library_play_all)
         top.addWidget(playall_btn)
@@ -2261,7 +2261,7 @@ class YTDLPApp(QMainWindow):
 
         self.lib_table = QTableWidget()
         self.lib_table.setColumnCount(11)
-        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "♥", "👎", "⏰", "▶", "📂", "✕", ""])
+        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "Like", "Dislike", "Watch Later", "Play", "Open Folder", "Delete", "Share"])
         self.lib_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.lib_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay.addWidget(self.lib_table)
@@ -2275,7 +2275,7 @@ class YTDLPApp(QMainWindow):
         q = self.lib_search.text().strip() if hasattr(self, "lib_search") else ""
         items = library_list(q)
         self.lib_table.setColumnCount(11)
-        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "♥", "👎", "⏰", "▶", "📂", "✕", ""])
+        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "Like", "Dislike", "Watch Later", "Play", "Open Folder", "Delete", "Share"])
         self.lib_table.setRowCount(len(items))
         for i, it in enumerate(items):
             self.lib_table.setItem(i, 0, QTableWidgetItem(it.get("title", "")))
@@ -2286,34 +2286,34 @@ class YTDLPApp(QMainWindow):
             self.lib_table.setItem(i, 4, QTableWidgetItem(it.get("filepath", "")))
 
             # Like
-            likeb = QPushButton("❤" if it.get("is_liked") else "🤍")
+            likeb = QPushButton("Like" if it.get("is_liked") else "Like")
             likeb.setProperty("id", it.get("id"))
             likeb.clicked.connect(self._lib_toggle_like)
             self.lib_table.setCellWidget(i, 5, likeb)
 
             # Dislike
-            dislikeb = QPushButton("🖤" if it.get("is_disliked") else "🤍")
+            dislikeb = QPushButton("Dislike" if it.get("is_disliked") else "Dislike")
             dislikeb.setProperty("id", it.get("id"))
             dislikeb.clicked.connect(self._lib_toggle_dislike)
             self.lib_table.setCellWidget(i, 6, dislikeb)
 
             # Watch Later
-            wlb = QPushButton("⏰" if it.get("is_watch_later") else "🕒")
+            wlb = QPushButton("Watch Later" if it.get("is_watch_later") else "Watch Later")
             wlb.setProperty("id", it.get("id"))
             wlb.clicked.connect(self._lib_toggle_watch_later)
             self.lib_table.setCellWidget(i, 7, wlb)
 
-            playb = QPushButton("▶")
+            playb = QPushButton("Play")
             playb.setProperty("path", it.get("filepath", ""))
             playb.clicked.connect(self._lib_play)
             self.lib_table.setCellWidget(i, 8, playb)
 
-            openb = QPushButton("📂")
+            openb = QPushButton("Open Folder")
             openb.setProperty("path", it.get("filepath", ""))
             openb.clicked.connect(self._lib_open_folder)
             self.lib_table.setCellWidget(i, 9, openb)
 
-            shareb = QPushButton("🔗")
+            shareb = QPushButton("Share")
             shareb.setProperty("url", it.get("source_url", ""))
             shareb.setToolTip("Copy URL to clipboard")
             shareb.clicked.connect(self._lib_share)
@@ -3114,22 +3114,22 @@ class MiniPlayer(QWidget):
         lay.addWidget(self.title_lbl)
 
         btns = QHBoxLayout()
-        self.prev_btn = QPushButton("⏮")
-        self.prev_btn.setFixedWidth(40)
+        self.prev_btn = QPushButton("Previous")
+        self.prev_btn.setFixedWidth(45)
         self.prev_btn.clicked.connect(main._playlist_prev)
         btns.addWidget(self.prev_btn)
 
-        self.play_btn = QPushButton("▶ Play")
+        self.play_btn = QPushButton("Play")
         self.play_btn.setFixedWidth(70)
         self.play_btn.clicked.connect(main._player_toggle)
         btns.addWidget(self.play_btn)
 
-        self.next_btn = QPushButton("⏭")
-        self.next_btn.setFixedWidth(40)
+        self.next_btn = QPushButton("Next")
+        self.next_btn.setFixedWidth(45)
         self.next_btn.clicked.connect(main._playlist_next)
         btns.addWidget(self.next_btn)
 
-        self.stop_btn = QPushButton("⏹ Stop")
+        self.stop_btn = QPushButton("Stop")
         self.stop_btn.setFixedWidth(70)
         self.stop_btn.clicked.connect(main._player_stop)
         btns.addWidget(self.stop_btn)
@@ -3147,9 +3147,9 @@ class MiniPlayer(QWidget):
 
     def _on_state_changed(self, state):
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.play_btn.setText("⏸ Pause")
+            self.play_btn.setText("Pause")
         else:
-            self.play_btn.setText("▶ Play")
+            self.play_btn.setText("Play")
 
     def _on_position_changed(self, pos):
         self.time_lbl.setText(f"{self._fmt(pos)} / {self._fmt(self.main.player.duration())}")
@@ -3245,7 +3245,7 @@ class RecentlyPlayedDialog(QDialog):
             self.table.setItem(i, 0, QTableWidgetItem(r["title"] or ""))
             self.table.setItem(i, 1, QTableWidgetItem(""))
             self.table.setItem(i, 2, QTableWidgetItem(r["played_at"] or ""))
-            playb = QPushButton("▶")
+            playb = QPushButton("Play")
             playb.setProperty("path", r["filepath"])
             playb.clicked.connect(self._play)
             self.table.setCellWidget(i, 3, playb)

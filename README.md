@@ -1,138 +1,122 @@
 # YT-DLP WebUI
 
-A pure Python desktop application for browsing YouTube and downloading videos/audio with full yt-dlp integration. Built with PyQt6 — no Electron, no React, no web bridge. Single-file architecture with a native Chromium browser tab, built-in media player, music library, and 60+ features.
+**A single-file, Electron-free desktop app that turns YouTube into your personal media library.** Built with PyQt6 and powered by yt-dlp — no API keys, no browser extensions, no Electron bloat.
 
-## Features
+---
 
-### YouTube Browser
-- Integrated Chromium (QWebEngineView) browser tab — default gateway
-- Search YouTube, browse trending, view top charts
-- "Download this video" button on any YouTube page
-- Video format picker (resolution, codec, container, audio-only)
-- Per-video download overrides (resolution cap, embed thumbnail/metadata/subs)
+## The Pitch
 
-### Download Engine
-- Powered by yt-dlp (no API key required)
-- Download queue with pause, resume, retry, cancel
-- Real-time progress, speed, ETA
-- Concurrent download control
-- Download speed limit
-- Auto-retry on failure
-- Drag & drop URLs onto the window
+Open YouTube in a native Chromium window. Find a video. Click **Download**. It lands in your local library with cover art, metadata, and full playback controls. Build playlists, spin artist radios, set sleep timers, adjust playback speed — all inside one window.
 
-### Media Player (Built-in)
-- Native Qt Multimedia player — no VLC required
-- Play downloaded videos and MP3s directly in the app
-- Playback speed (0.5x–2x), skip ±10s, shuffle, repeat (All/One/None)
-- Autoplay next, crossfade, gapless, sleep timer
-- True random Fisher-Yates shuffle
-- Playback position resume
-- Keyboard shortcuts: Space (play/pause), arrows (seek), Up/Down (volume), M (mute), F (fullscreen)
-- Mini player (always-on-top)
-- Lyrics panel, album art viewer, recently played history
+It's yt-dlp with a face.
 
-### Music Section (YouTube Music / Spotify-style)
-- Download MP3s from YouTube (best audio, VBR quality 0, embedded metadata & cover art)
-- Local music library with cover thumbnails
-- Artist Radio — play all tracks by an artist
-- Album Radio — play all tracks in an album
-- Discovery Weekly — shuffle your liked songs
-- Mood Playlists (Chill, Workout, Party, Focus, Sleep)
-- Top Charts by region
-- Like/Dislike/Watch Later per track
-- Playlists: export/import JSON, collaborative playlist import from YouTube URL
+---
 
-### Library & Library Management
-- SQLite library index of all downloaded media
-- Search/filter library, favorites, watch later
-- Open file location, re-download, share (copy URL)
-- Play count tracking
+## What It Does
 
-### Settings
-- Download path, concurrent downloads, max retries, speed limit
-- Resolution cap, container format, audio-only, embed thumbnail/metadata/subs
-- Proxy, cookies-from-browser, cookies file
-- Theme: Dark / Light / System / Night Mode (auto 8pm–8am)
-- Equalizer bands, volume normalize
-- Auto-update yt-dlp
+| Feature | What it means |
+|---------|---------------|
+| **Browser tab** | Native Chromium window — search, browse, and download any YouTube URL with one click |
+| **Download queue** | Pause, resume, retry, cancel. Real-time progress, speed, ETA |
+| **MP3 downloads** | Extract audio with embedded cover art and metadata |
+| **Music library** | SQLite-backed index of everything you download |
+| **Artist Radio** | Play every track by an artist, shuffled |
+| **Album Radio** | Play full albums in track order |
+| **Discovery Weekly** | Auto-shuffle your liked tracks |
+| **Mood mixes** | Chill, Workout, Party, Focus, Sleep — keyword-matched from your library |
+| **Top Charts** | Regional trending music discovery |
+| **Built-in player** | Playback speed (0.5x–2x), skip ±10s, shuffle, repeat, crossfade, sleep timer, EQ bands |
+| **Resume** | Playback position saved per file — close and come back where you left off |
+| **Keyboard controls** | Space = play/pause, arrows = seek, M = mute, F = fullscreen |
+| **System tray** | Minimize to tray, downloads keep running, now-playing tooltip |
+| **Auto-update** | One-click yt-dlp updater so extraction never breaks |
+| **Export/Import** | JSON playlist backup and restore |
 
-## Tech Stack
+---
 
-- **Language**: Python 3.10+
-- **UI Framework**: PyQt6 (Qt Widgets + WebEngine + Multimedia)
-- **Downloader**: yt-dlp (Python API, in-process)
-- **Media**: Qt Multimedia (QMediaPlayer, QVideoWidget, QAudioOutput)
-- **Database**: SQLite
-- **Packaging**: PyInstaller / manual run
+## Tech Stack (Zero Bloat)
 
-## Installation & Usage
+- **Python 3.10+** — single-file architecture
+- **PyQt6** — Qt Widgets + WebEngine (Chromium) + Multimedia
+- **yt-dlp** — in-process Python API (no CLI shelling out)
+- **SQLite** — library index, watch history, playback positions
+- **FFmpeg** — audio extraction, metadata embedding, cover art
 
-### Prerequisites
-- Python 3.10 or higher
-- FFmpeg (for audio extraction, metadata embedding, thumbnail embed) — bundled for Windows in `ffmpeg/bin/`
+No Electron. No React. No Node. No browser extensions. One `.py` file.
 
-### Run from Source
+---
+
+## Quick Start
+
 ```bash
-git clone https://github.com/yourusername/yt-dlp-webui.git
-cd yt-dlp-webui
+# Clone
+git clone https://github.com/Ash96534/yt-dlp-ui.git
+cd yt-dlp-ui
+
+# Install deps
 pip install -r requirements.txt
+
+# Run
 python main.py
 ```
 
 ### FFmpeg
-On Windows, FFmpeg binaries are included in `ffmpeg/bin/`. On other platforms, install FFmpeg system-wide or set `postprocessing.ffmpeg_location` in Settings.
 
-## Architecture
+FFmpeg is required for audio extraction and metadata embedding.
 
-```
-main.py                          # Single-file application (UI + backend + downloader)
-├── YTDLPApp(QMainWindow)        # Main window, navigation, all views
-├── DownloadWorker(QThread)      # yt-dlp download engine with progress hooks
-├── MusicDownloadWorker(QThread) # MP3 extraction worker
-├── PlaylistFetchWorker(QThread) # Playlist/channel URL extraction
-├── SearchWorker(QThread)        # YouTube search
-├── InfoWorker(QThread)          # Video metadata extraction
-├── YtDlpUpdateWorker(QThread)   # yt-dlp auto-updater
-├── MiniPlayer(QWidget)          # Always-on-top mini player
-├── LyricsPanel(QWidget)         # Lyrics display
-├── AlbumArtViewer(QDialog)      # Full-size album art
-├── RecentlyPlayedDialog(QDialog)# Playback history
-├── EQBandsDialog(QDialog)       # Equalizer bands
-├── BatchDownloadDialog(QDialog) # Batch playlist downloader
-├── PlaylistImportDialog(QDialog)# Import playlist from URL
-├── QFlowLayout(QLayout)         # Flow layout for recent searches
-└── SQLite database (data/library.db)  # Library index, watch history, playback positions
-```
+- **Windows:** Binaries included in `ffmpeg/bin/`
+- **macOS/Linux:** Install via your package manager (`brew install ffmpeg` or `sudo apt install ffmpeg`)
+
+Then set the path in **Settings > Downloads > FFmpeg location** if it's not auto-detected.
+
+---
 
 ## Navigation
 
-| View | Purpose |
-|------|---------|
-| 🌐 Browser | Chromium YouTube browser with download button |
-| 🔍 Search | YouTube search with recent searches |
-| 🔥 Trending | Trending videos |
-| 🎵 Music | MP3 downloads, music library, mood playlists |
-| 📊 Top Charts | Regional music charts |
-| ▶️ Video | Video detail, format picker, per-video overrides |
-| ⬇️ Queue | Download queue (pause/resume/retry/cancel) |
-| 📚 Library | Downloaded media index, play, share, like/dislike |
-| ⚙️ Settings | Download, format, network, appearance config |
+```
+Browser        — Open YouTube, download any video
+Search         — Search YouTube with recent-search chips
+Trending       — See what's popular right now
+Music          — MP3 downloads, library, mood mixes
+Top Charts     — Regional music charts
+Video          — Format picker, per-video overrides
+Queue          — Download management (pause/resume/retry)
+Library        — Your media index, like/dislike, watch later
+Settings       — Path, resolution, container, proxy, theme, EQ
+```
+
+---
 
 ## Configuration
 
-Settings are saved to `data/config.json`. The library index is stored in `data/library.db` (SQLite).
+Settings live in `data/config.json`. Your library index lives in `data/library.db` (SQLite).
 
-Key config sections:
-- `downloads` — path, concurrent downloads, retries, speed limit
-- `format` — resolution cap, container, audio-only, embed options
-- `network` — proxy, cookies
-- `auth` — cookies-from-browser, cookies-file
-- `app` — theme, recent searches
+Key settings:
+- **Download path** — where files land
+- **Resolution cap** — 360p to 4320p
+- **Container** — MP4, MKV, WebM, MOV
+- **Speed limit** — KB/s throttle
+- **Theme** — Dark, Light, System, or Night Mode (auto 8pm–8am)
+- **Proxy / Cookies** — for age-restricted or region-locked content
+
+---
+
+## Philosophy
+
+Most YouTube downloaders are CLI tools, sketchy websites, or Electron apps that eat 400MB of RAM. This is none of those things.
+
+It's a desktop app that respects your machine, stores everything locally, and treats your downloads like a personal media library — not a temp folder.
+
+---
 
 ## License
 
-MIT
+MIT — use it, break it, remix it.
 
 ## Disclaimer
 
-This tool is for personal use and content you own or have rights to. Respect YouTube's Terms of Service and copyright laws. The author is not responsible for misuse.
+For personal use with content you own or have rights to. Respect YouTube's Terms of Service and applicable copyright law. The author is not responsible for misuse.
+
+---
+
+**Built with PyQt6 + yt-dlp. No API keys. No tracking. Just your videos, your way.**
