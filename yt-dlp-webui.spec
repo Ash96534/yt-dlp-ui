@@ -1,11 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+import os
+import glob
+
 block_cipher = None
+
+# Collect ffmpeg binaries if they exist (downloaded during CI)
+binaries = []
+for pattern in ['ffmpeg/bin/ffmpeg*', 'ffmpeg/bin/ffprobe*']:
+    for f in glob.glob(pattern):
+        if os.path.isfile(f):
+            binaries.append((f, 'ffmpeg/bin'))
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=binaries,
     datas=[
         ('config/config.default.json', 'config'),
     ],
