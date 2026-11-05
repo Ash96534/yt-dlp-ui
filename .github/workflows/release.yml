@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 pyinstaller
+          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 PyQt6-WebEngine>=6.12.0 pyinstaller
 
       - name: Download FFmpeg binaries
         run: |
@@ -65,7 +65,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 pyinstaller
+          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 PyQt6-WebEngine>=6.12.0 pyinstaller
 
       - name: Install system dependencies
         run: |
@@ -115,7 +115,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 pyinstaller
+          pip install yt-dlp>=2026.8.0 PyQt6>=6.12.0 PyQt6-Qt6>=6.12.0 PyQt6-WebEngine>=6.12.0 pyinstaller
 
       - name: Download FFmpeg
         run: |
@@ -156,12 +156,12 @@ jobs:
         with:
           files: |
             dist/**/*
-          name: YT-DLP WebUI v1.0.0
-          tag_name: v1.0.0
+          name: YT-DLP WebUI v1.0.2
+          tag_name: v1.0.2
           draft: false
           prerelease: false
           body: |
-            # YT-DLP WebUI v1.0.0
+            # YT-DLP WebUI v1.0.2
 
             ## What's New
             - Integrated Chromium YouTube browser
@@ -177,8 +177,7 @@ jobs:
             - Export/import playlists (JSON)
 
             ## Installation
-
-            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.0.exe` or portable `.zip`
+            - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.2.exe` or portable `.zip`
             - **Linux**: Download `.AppImage`
             - **macOS**: Download `.dmg`
 
