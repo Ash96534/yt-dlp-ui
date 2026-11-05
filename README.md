@@ -16,33 +16,36 @@ It's yt-dlp with a face.
 
 | Feature | What it means |
 |---------|---------------|
-| **Browser tab** | Native Chromium window — search, browse, and download any YouTube URL with one click |
-| **Download queue** | Pause, resume, retry, cancel. Real-time progress, speed, ETA |
-| **MP3 downloads** | Extract audio with embedded cover art and metadata |
-| **Music library** | SQLite-backed index of everything you download |
+| **Integrated YouTube Browser** | Native Chromium window — search, browse, and download any YouTube URL with one click |
+| **Download Queue** | Pause, resume, retry, cancel. Real-time progress, speed, ETA |
+| **MP3 Downloads** | Extract audio with embedded cover art and metadata |
+| **Music Library** | SQLite-backed index of everything you download |
 | **Artist Radio** | Play every track by an artist, shuffled |
 | **Album Radio** | Play full albums in track order |
 | **Discovery Weekly** | Auto-shuffle your liked tracks |
-| **Mood mixes** | Chill, Workout, Party, Focus, Sleep — keyword-matched from your library |
+| **Mood Mixes** | Chill, Workout, Party, Focus, Sleep — keyword-matched from your library |
 | **Top Charts** | Regional trending music discovery |
-| **Built-in player** | Playback speed (0.5x–2x), skip ±10s, shuffle, repeat, crossfade, sleep timer, EQ bands |
-| **Resume** | Playback position saved per file — close and come back where you left off |
-| **Keyboard controls** | Space = play/pause, arrows = seek, M = mute, F = fullscreen |
-| **System tray** | Minimize to tray, downloads keep running, now-playing tooltip |
-| **Auto-update** | One-click yt-dlp updater so extraction never breaks |
+| **Built-in Media Player** | Playback speed (0.5x–2x), skip ±10s, shuffle, repeat, crossfade, sleep timer, EQ bands |
+| **Playback Resume** | Position saved per file — close and come back where you left off |
+| **Keyboard Controls** | Space = play/pause, arrows = seek, M = mute, F = fullscreen, N/P = next/prev |
+| **System Tray** | Minimize to tray, downloads keep running, now-playing tooltip |
+| **Auto-Update** | One-click yt-dlp updater so extraction never breaks |
 | **Export/Import** | JSON playlist backup and restore |
+| **Multi-Output Audio** | Play to multiple devices simultaneously (Bluetooth speaker + laptop + headphones) |
 
 ---
 
 ## Tech Stack (Zero Bloat)
 
-- **Python 3.10+** — single-file architecture
-- **PyQt6** — Qt Widgets + WebEngine (Chromium) + Multimedia
-- **yt-dlp** — in-process Python API (no CLI shelling out)
-- **SQLite** — library index, watch history, playback positions
-- **FFmpeg** — audio extraction, metadata embedding, cover art
+| Layer | Technology |
+|-------|-----------|
+| **Language** | Python 3.10+ |
+| **UI Framework** | PyQt6 (Qt Widgets + WebEngine Chromium + Multimedia) |
+| **Downloader** | yt-dlp (in-process Python API) |
+| **Database** | SQLite (library index, watch history, playback positions) |
+| **Media** | FFmpeg (audio extraction, metadata embedding, cover art) |
 
-No Electron. No React. No Node. No browser extensions. One `.py` file.
+No Electron. No React. No Node. No browser extensions. One `.py` file (~3,600 lines).
 
 ---
 
@@ -53,7 +56,7 @@ No Electron. No React. No Node. No browser extensions. One `.py` file.
 git clone https://github.com/Ash96534/yt-dlp-ui.git
 cd yt-dlp-ui
 
-# Install deps
+# Install dependencies
 pip install -r requirements.txt
 
 # Run
@@ -62,10 +65,11 @@ python main.py
 
 ### FFmpeg
 
-FFmpeg is required for audio extraction and metadata embedding.
+FFmpeg is required for audio extraction (MP3), metadata embedding, and cover art.
 
 - **Windows:** Binaries included in `ffmpeg/bin/`
-- **macOS/Linux:** Install via your package manager (`brew install ffmpeg` or `sudo apt install ffmpeg`)
+- **macOS:** `brew install ffmpeg`
+- **Linux:** `sudo apt install ffmpeg` (or your distro's equivalent)
 
 Then set the path in **Settings > Downloads > FFmpeg location** if it's not auto-detected.
 
@@ -73,17 +77,17 @@ Then set the path in **Settings > Downloads > FFmpeg location** if it's not auto
 
 ## Navigation
 
-```
-Browser        — Open YouTube, download any video
-Search         — Search YouTube with recent-search chips
-Trending       — See what's popular right now
-Music          — MP3 downloads, library, mood mixes
-Top Charts     — Regional music charts
-Video          — Format picker, per-video overrides
-Queue          — Download management (pause/resume/retry)
-Library        — Your media index, like/dislike, watch later
-Settings       — Path, resolution, container, proxy, theme, EQ
-```
+| View | Purpose |
+|------|---------|
+| **Browser** | Open YouTube in a native Chromium window. Download any video with one click |
+| **Search** | Search YouTube with recent-search chips and card-based results |
+| **Trending** | See what's popular right now |
+| **Music** | MP3 downloads, local library, mood mixes, artist/album radio |
+| **Top Charts** | Regional trending music discovery |
+| **Video** | Format picker, per-video overrides (resolution, container, embed options) |
+| **Queue** | Download management — pause/resume/retry/cancel with real-time progress |
+| **Library** | Your media index — like/dislike/watch-later, play, open folder, share |
+| **Settings** | Download path, resolution, container, proxy, theme, EQ, audio devices |
 
 ---
 
@@ -91,21 +95,91 @@ Settings       — Path, resolution, container, proxy, theme, EQ
 
 Settings live in `data/config.json`. Your library index lives in `data/library.db` (SQLite).
 
-Key settings:
-- **Download path** — where files land
-- **Resolution cap** — 360p to 4320p
-- **Container** — MP4, MKV, WebM, MOV
-- **Speed limit** — KB/s throttle
-- **Theme** — Dark, Light, System, or Night Mode (auto 8pm–8am)
-- **Proxy / Cookies** — for age-restricted or region-locked content
+### Key Settings Sections
+
+| Section | Options |
+|---------|---------|
+| **Downloads** | Path, concurrent downloads (1–10), max retries, speed limit (KB/s) |
+| **Format** | Resolution cap (360p–4320p), container (MP4/MKV/WebM/MOV), audio-only, embed thumbnail/metadata/subs |
+| **Network** | Proxy, cookies-from-browser, cookies file |
+| **Auth** | Cookies from browser, cookies file path |
+| **App** | Theme (dark/light/system/night), recent searches |
+| **Audio** | Output device selection (multi-output supported) |
 
 ---
 
-## Philosophy
+## Multi-Output Audio
 
-Most YouTube downloaders are CLI tools, sketchy websites, or Electron apps that eat 400MB of RAM. This is none of those things.
+Play to multiple audio devices simultaneously — for example, your Bluetooth speaker **and** laptop speakers at the same time.
 
-It's a desktop app that respects your machine, stores everything locally, and treats your downloads like a personal media library — not a temp folder.
+1. Go to **Settings > Audio**
+2. Check all output devices you want to use
+3. Play any media — it will route to all selected devices
+
+Each output gets its own `QMediaPlayer` + `QAudioOutput` pair, keeping playback perfectly synced across devices.
+
+---
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `←` / `→` | Skip back / forward 10 seconds |
+| `↑` / `↓` | Volume up / down |
+| `M` | Mute / Unmute |
+| `F` | Toggle fullscreen |
+| `N` | Next track |
+| `P` | Previous track |
+
+---
+
+## File Structure
+
+```
+yt-dlp-webui/
+├── main.py                 # Main application (~3,600 lines, single file)
+├── requirements.txt        # Python dependencies
+├── README.md               # This file
+├── PROJECT_PLAN.md         # Original project plan
+├── UI_OVERHAUL_PLAN.md     # UI redesign documentation
+├── config/
+│   └── config.default.json # Default application settings
+├── ffmpeg/
+│   └── bin/                # FFmpeg binaries (Windows)
+│       ├── ffmpeg.exe
+│       └── ffprobe.exe
+├── data/                   # Created at runtime
+│   ├── config.json         # User settings
+│   └── library.db          # SQLite library index
+└── ui/                     # UI component package
+    ├── __init__.py
+    ├── theme.py            # Dark/light/system/night theme engine
+    ├── nav_rail.py         # Collapsible navigation sidebar
+    ├── player_bar.py       # Always-visible media player bar
+    ├── audio_devices.py    # Multi-output audio manager
+    └── widgets.py          # Reusable widgets (MediaCard, buttons, etc.)
+```
+
+---
+
+## Architecture
+
+The app is built around a single `QMainWindow` (`YTDLPApp`) with:
+
+- **Navigation Rail** (`ui/nav_rail.py`) — Collapsible sidebar with all views
+- **Content Stack** (`QStackedWidget`) — One page per view (Browser, Search, Music, etc.)
+- **Player Bar** (`ui/player_bar.py`) — Always-visible bottom player with collapsed/expanded states
+- **Theme Manager** (`ui/theme.py`) — Instant dark/light/system/night theme switching
+- **MultiOutputManager** (`ui/audio_devices.py`) — Simultaneous playback to multiple audio devices
+
+Download workers run in `QThread` subclasses so the UI never blocks:
+
+- `DownloadWorker` — General yt-dlp downloads with progress hooks
+- `MusicDownloadWorker` — MP3-optimized downloads
+- `PlaylistFetchWorker` — Extract playlist entries without downloading
+- `InfoWorker` / `SearchWorker` — Metadata extraction and search
+- `YtDlpUpdateWorker` — Background yt-dlp updates
 
 ---
 

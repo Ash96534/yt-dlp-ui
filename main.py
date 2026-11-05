@@ -1,4 +1,19 @@
-"""YT-DLP WebUI — Pure Python desktop app with PyQt6."""
+"""
+YT-DLP WebUI — Pure Python desktop app with PyQt6.
+
+A single-file application that turns YouTube into a personal media library.
+Provides an integrated Chromium browser, download queue, media player,
+music library, and multi-output audio support.
+
+Modules:
+    config    - Configuration load/save with deep-merge
+    library   - SQLite library index (library.db)
+    downloader - yt-dlp download engine with progress hooks
+    ui        - UI component package (theme, nav_rail, player_bar, widgets)
+
+Usage:
+    python main.py
+"""
 from __future__ import annotations
 
 import json
@@ -52,7 +67,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # --------------------------------------------------------------------------- #
 # Config
 # --------------------------------------------------------------------------- #
-def deep_merge(base, override):
+def deep_merge(base: Dict, override: Dict) -> Dict:
+    """Recursively merge override dict into base dict. override values win."""
     result = dict(base)
     for k, v in override.items():
         if k in result and isinstance(result[k], dict) and isinstance(v, dict):
@@ -62,7 +78,12 @@ def deep_merge(base, override):
     return result
 
 
-def load_config():
+def load_config() -> Dict:
+    """Load user config from data/config.json, falling back to defaults.
+
+    Returns a deep-merged dict of defaults and user config. If user config
+    is missing or corrupt, returns defaults only.
+    """
     defaults = {}
     if os.path.exists(DEFAULT_CONFIG_PATH):
         with open(DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -77,7 +98,8 @@ def load_config():
     return deep_merge(defaults, user)
 
 
-def save_config(cfg):
+def save_config(cfg: Dict) -> None:
+    """Persist configuration dict to data/config.json."""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
 
@@ -86,6 +108,12 @@ def save_config(cfg):
 # Library DB
 # --------------------------------------------------------------------------- #
 def init_db():
+    """Initialize the SQLite library database with all required tables.
+
+    Creates tables: library, watch_history, playback_positions,
+    music_playlists, music_playlist_tables. Runs migration ALTER TABLE
+    for existing databases to add new columns safely.
+    """
     c = sqlite3.connect(LIBRARY_DB)
     c.execute("""
         CREATE TABLE IF NOT EXISTS library (
@@ -175,7 +203,10 @@ def init_db():
     c.close()
 
 
-def library_add(job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container):
+def library_add(job_id: str, source_url: str, title: str, uploader: str,
+                duration: int, filepath: str, file_size: int,
+                resolution: str, container: str):
+    """Insert a new row into the library table after a download completes."""
     c = sqlite3.connect(LIBRARY_DB)
     c.execute(
         "INSERT INTO library (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -185,7 +216,11 @@ def library_add(job_id, source_url, title, uploader, duration, filepath, file_si
     c.close()
 
 
-def library_list(query=""):
+def library_list(query: str = "") -> List[Dict]:
+    """Query the library table, optionally filtered by title/uploader search query.
+
+    Returns list of dicts ordered by downloaded_at descending.
+    """
     c = sqlite3.connect(LIBRARY_DB)
     c.row_factory = sqlite3.Row
     if query:
@@ -199,7 +234,8 @@ def library_list(query=""):
     return [dict(r) for r in rows]
 
 
-def library_delete(item_id, delete_file=False):
+def library_delete(item_id: int, delete_file: bool = False):
+    """Delete a row from the library. Optionally delete the physical file too."""
     c = sqlite3.connect(LIBRARY_DB)
     row = c.execute("SELECT filepath FROM library WHERE id = ?", (item_id,)).fetchone()
     c.execute("DELETE FROM library WHERE id = ?", (item_id,))
@@ -216,19 +252,30 @@ def library_delete(item_id, delete_file=False):
 # Download Worker
 # --------------------------------------------------------------------------- #
 class DownloadWorker(QThread):
-    progress = pyqtSignal(str, float, str, str, int, int)  # job_id, pct, speed, eta, downloaded, total
-    status = pyqtSignal(str, str)  # job_id, status
-    completed = pyqtSignal(str, str)  # job_id, filepath
-    failed = pyqtSignal(str, str)  # job_id, error
+    """Worker thread that downloads media via yt-dlp.
 
-    def __init__(self, job_id, url, config, config_overrides=None):
+    Runs yt-dlp in a background thread with progress hooks, pause/abort support,
+    and post-processing (FFmpeg embed thumbnail/metadata, audio extraction).
+    Emits progress/status/completed/failed signals to the main thread.
+
+    Signals:
+        progress(job_id, pct, speed, eta, downloaded, total)
+        status(job_id, status)  # status: queued/running/completed/failed/cancelled
+        completed(job_id, filepath)
+        failed(job_id, error_message)
+    """
+
+    def __init__(self, job_id: str, url: str, config: Dict,
+                 config_overrides: Optional[Dict] = None):
         super().__init__()
         self.job_id = job_id
         self.url = url
+        # Deep-merge global config with per-download overrides
         self.config = deep_merge(config, config_overrides or {})
         self._abort = False
 
     def run(self):
+        """Execute the download in the worker thread."""
         self.status.emit(self.job_id, "running")
 
         def hook(d):
@@ -286,9 +333,11 @@ class DownloadWorker(QThread):
             self.failed.emit(self.job_id, str(e))
 
     def abort(self):
+        """Request cancellation of the download."""
         self._abort = True
 
     def _build_opts(self, hook):
+        """Build yt-dlp options dict from config and per-download overrides."""
         fc = self.config.get("format", {})
         dc = self.config.get("downloads", {})
         nc = self.config.get("network", {})
@@ -387,6 +436,20 @@ class DownloadWorker(QThread):
 # UI — Main Window
 # --------------------------------------------------------------------------- #
 class YTDLPApp(QMainWindow):
+    """Main application window for YT-DLP WebUI.
+
+    Owns the navigation rail, content stack (all views), player bar,
+    download queue, media library, and backend workers.
+
+    Key instance attributes:
+        self.config   - Global configuration dict
+        self.workers  - Active DownloadWorker threads {job_id: worker}
+        self.jobs     - Job state dict {job_id: {status, progress, ...}}
+        self.player   - MultiOutputManager instance
+        self.playlist - Current playback queue [filepath, ...]
+        self.theme    - ThemeManager instance
+    """
+
     def __init__(self):
         super().__init__()
         self.setAcceptDrops(True)
@@ -615,6 +678,7 @@ class YTDLPApp(QMainWindow):
         self._player_load(self.playlist[self.playlist_index])
 
     def _player_load(self, filepath):
+        """Load a media file into the player and begin playback."""
         if not filepath or not os.path.exists(filepath):
             QMessageBox.warning(self, "Playback", "File not found: " + str(filepath))
             return
@@ -949,6 +1013,7 @@ class YTDLPApp(QMainWindow):
         self.set_view("queue")
 
     def _build_ui(self):
+        """Build the complete UI: navigation rail, content stack, player bar."""
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
@@ -1005,13 +1070,20 @@ class YTDLPApp(QMainWindow):
         self.set_view("browser")
         self.apply_theme()
 
-    def set_view(self, key):
+    def set_view(self, key: str):
+        """Switch the content stack to the named view and update nav rail.
+
+        Args:
+            key: View name (browser, search, trending, music, charts,
+                 video, queue, library, settings).
+        """
         self.nav_rail.set_active(key)
         index = {"browser": 0, "search": 1, "trending": 2, "music": 3, "charts": 4, "video": 5,
                  "queue": 6, "library": 7, "settings": 8}[key]
         self.stack.setCurrentIndex(index)
 
     def apply_theme(self):
+        """Apply the configured theme via ThemeManager and refresh UI."""
         app_cfg = self.config.get("app", {})
         theme = app_cfg.get("theme", "dark")
         self.theme.set_theme(theme)
