@@ -1,4 +1,26 @@
-# YT-DLP WebUI v1.0.0
+# Release Notes
+
+## v1.1 (In Development) — Core Stability
+
+### Added
+- Resume interrupted downloads on restart — download jobs are persisted to `data/jobs.json`; queued/running jobs are automatically requeued on launch
+- Per-job bandwidth throttling via `downloads.speed_limit_kbps` (0 = unlimited; MB/s conversion not needed)
+- Empty states with helpful prompts for Library, Music Library, Queue, and Search
+- Accent color picker in Settings → Appearance (pick/reset, applies instantly, persisted in config)
+- Config validation with warnings and safe fallbacks for invalid merge_output_format, audio_format, resolution_cap, proxy, theme, and download/network limits
+
+### Fixed
+- Downloads no longer crash on start (missing `pyqtSignal` declarations on `DownloadWorker`)
+- `InfoWorker`/`SearchWorker` moved before the entry point (previously never defined at runtime)
+- Player Bar now works with `MultiOutputManager` (seek, speed, play/pause)
+- Overlay buttons wired at runtime selection (Mini Player, Lyrics, Album Art, Crossfade, Gapless, Recent)
+- Playback position saved on quit/minimize-to-tray
+- "System" theme mode works (ThemeManager bound to QApplication)
+- Search view no longer references undefined widgets; recent-search chips render correctly
+
+---
+
+## YT-DLP WebUI v1.0.0
 
 ## Features
 

@@ -206,6 +206,17 @@ class MultiOutputManager(QObject):
             self._outputs[device_id]["audio_output"].setVolume(vol)
             self._outputs[device_id]["volume"] = vol
 
+    def set_playback_rate(self, rate: float) -> None:
+        """Set playback rate on all outputs (e.g. 1.0 = normal, 2.0 = double speed)."""
+        for entry in self._outputs.values():
+            entry["player"].setPlaybackRate(rate)
+
+    def source(self) -> QUrl:
+        """Return the current source as a QUrl (empty if none loaded)."""
+        if self._current_source:
+            return QUrl.fromLocalFile(self._current_source)
+        return QUrl()
+
     def is_playing(self) -> bool:
         return self.player_state() == QMediaPlayer.PlaybackState.PlayingState
 

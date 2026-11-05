@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication
 
 
@@ -58,6 +59,21 @@ class ThemeManager:
         self.app = app
         self._current_theme: str = "dark"
         self._palette: Dict[str, str] = DARK_PALETTE.copy()
+        self._accent: Optional[str] = None
+
+    def _with_accent(self, palette: Dict[str, str]) -> Dict[str, str]:
+        """Return a copy of palette with the custom accent applied (if any)."""
+        if not self._accent:
+            return palette.copy()
+        palette = palette.copy()
+        palette["accent"] = self._accent
+        c = QColor(self._accent)
+        if c.isValid():
+            # Lighten or darken depending on base accent luminance
+            h, s, v, a = c.getHsv()
+            hover = QColor.fromHsv(h, s, min(255, v + 30), a)
+            palette["accent_hover"] = hover.name()
+        return palette
 
     def set_theme(self, theme: str) -> None:
         """Set the application theme. Valid: dark, light, system, night."""
@@ -73,7 +89,8 @@ class ThemeManager:
             resolved = theme
 
         self._current_theme = theme
-        self._palette = DARK_PALETTE if resolved == "dark" else LIGHT_PALETTE
+        palette = DARK_PALETTE if resolved == "dark" else LIGHT_PALETTE
+        self._palette = self._with_accent(palette)
         self.app.setStyleSheet(self._build_qss())
 
     def current_theme(self) -> str:
@@ -81,6 +98,21 @@ class ThemeManager:
 
     def palette(self) -> Dict[str, str]:
         return self._palette.copy()
+
+    def set_accent(self, color: Optional[str]) -> None:
+        """Set a custom accent color (hex string or None to use palette default)."""
+        if color:
+            c = QColor(color)
+            if not c.isValid():
+                raise ValueError(f"Invalid color: {color}")
+            self._accent = c.name()
+        else:
+            self._accent = None
+        # Rebuild with the current theme
+        self.set_theme(self._current_theme)
+
+    def accent_color(self) -> Optional[str]:
+        return self._accent
 
     def color(self, key: str) -> str:
         return self._palette.get(key, "#000000")

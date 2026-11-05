@@ -17,7 +17,8 @@
     "retry_sleep": 10,
     "fragment_retries": 10,
     "speed_limit": null,
-    "throttled_rate": null
+    "throttled_rate": null,
+    "speed_limit_kbps": 0
   },
   "format": {
     "preferred": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",

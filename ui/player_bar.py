@@ -38,8 +38,8 @@ class PlayerBar(QFrame):
 
     def __init__(
         self,
-        player: QMediaPlayer,
-        audio_output: QAudioOutput,
+        player,
+        audio_output,
         video_widget: QVideoWidget,
         theme: ThemeManager,
         parent: Optional[QWidget] = None,
@@ -207,18 +207,36 @@ class PlayerBar(QFrame):
         self.btn_next.clicked.connect(self._next)
         self.btn_stop.clicked.connect(self._stop)
 
+        self.btn_mini.clicked.connect(self._on_mini_clicked)
+        self.btn_lyrics.clicked.connect(self._on_lyrics_clicked)
+        self.btn_art.clicked.connect(self._on_art_clicked)
+        self.btn_crossfade.clicked.connect(self._on_crossfade_clicked)
+        self.btn_gapless.clicked.connect(self._on_gapless_clicked)
+        self.btn_recent.clicked.connect(self._on_recent_clicked)
+
+    def _on_mini_clicked(self) -> None:
         if self._on_mini:
-            self.btn_mini.clicked.connect(self._on_mini)
+            self._on_mini()
+
+    def _on_lyrics_clicked(self) -> None:
         if self._on_lyrics:
-            self.btn_lyrics.clicked.connect(self._on_lyrics)
+            self._on_lyrics()
+
+    def _on_art_clicked(self) -> None:
         if self._on_album_art:
-            self.btn_art.clicked.connect(self._on_album_art)
+            self._on_album_art()
+
+    def _on_crossfade_clicked(self) -> None:
         if self._on_crossfade:
-            self.btn_crossfade.clicked.connect(self._on_crossfade)
+            self._on_crossfade()
+
+    def _on_gapless_clicked(self) -> None:
         if self._on_gapless:
-            self.btn_gapless.clicked.connect(self._on_gapless)
+            self._on_gapless()
+
+    def _on_recent_clicked(self) -> None:
         if self._on_recent:
-            self.btn_recent.clicked.connect(self._on_recent)
+            self._on_recent()
 
     def _apply_theme(self) -> None:
         p = self.theme.palette()
@@ -234,7 +252,7 @@ class PlayerBar(QFrame):
     # ------------------------------------------------------------------ #
     def load(self, filepath: str, title: str = "", artwork: Optional[QPixmap] = None) -> None:
         """Load a media file into the player bar."""
-        self.player.setSource(QUrl.fromLocalFile(filepath))
+        self.player.set_source(filepath)
         self.player.play()
         self.setVisible(True)
         self.title_lbl.setText(title or "Unknown")
@@ -295,17 +313,17 @@ class PlayerBar(QFrame):
         self.pos_slider.setRange(0, dur)
 
     def _on_seek(self, value: int) -> None:
-        self.player.setPosition(value)
+        self.player.set_position(value)
 
     def _on_volume(self, value: int) -> None:
-        self.audio_output.setVolume(value / 100.0)
+        self.player.set_volume(value / 100.0)
 
     def _on_speed(self, text: str) -> None:
         rate = float(text.replace("x", ""))
-        self.player.setPlaybackRate(rate)
+        self.player.set_playback_rate(rate)
 
     def _toggle_play(self) -> None:
-        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+        if self.player.player_state() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()

@@ -5,6 +5,7 @@ import os
 import threading
 import time
 import uuid
+import json
 from dataclasses import dataclass, field, asdict
 from typing import Any, Callable, Dict, List, Optional
 
@@ -12,6 +13,8 @@ import yt_dlp
 
 from config import deep_merge, load_config, save_config, USER_CONFIG_PATH
 from job_queue import JobQueue, PRIORITY_ORDER
+
+JOBS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'jobs.json')
 
 # --------------------------------------------------------------------------- #
 # Job state machine
@@ -70,6 +73,7 @@ class DownloadManager:
         self._stop = threading.Event()
         self._active: Dict[str, yt_dlp.YoutubeDL] = {}  # job_id -> running ydl
         self._start_workers()
+        self._load_jobs()
 
     # -- lifecycle ---------------------------------------------------------- #
     def _start_workers(self) -> None:
@@ -82,7 +86,65 @@ class DownloadManager:
 
     def shutdown(self) -> None:
         self._stop.set()
-        self.queue._condition.notify_all()
+        with self.queue._condition:
+            self.queue._condition.notify_all()
+        self._save_jobs()
+
+    # -- persistence --------------------------------------------------------- #
+    def _jobs_state_path(self) -> str:
+        os.makedirs(os.path.dirname(JOBS_PATH), exist_ok=True)
+        return JOBS_PATH
+
+    def _save_jobs(self) -> None:
+        """Persist download jobs to disk so interrupted ones survive a restart."""
+        try:
+            with self._lock:
+                snapshot = [j.to_dict() for j in self.jobs.values()]
+            with open(self._jobs_state_path(), 'w', encoding='utf-8') as f:
+                json.dump(snapshot, f, indent=2)
+        except Exception:
+            pass
+
+    def _load_jobs(self) -> None:
+        """Reload persisted jobs on startup; requeue interrupted/queued jobs."""
+        path = self._jobs_state_path()
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                snapshot = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return
+        with self._lock:
+            for d in snapshot:
+                try:
+                    job = DownloadJob(
+                        job_id=d.get('job_id') or str(uuid.uuid4()),
+                        url=d.get('url') or '',
+                        title=d.get('title') or '',
+                        status=d.get('status', JOB_QUEUED),
+                        progress=float(d.get('progress') or 0.0),
+                        speed=d.get('speed') or '',
+                        eta=d.get('eta') or '',
+                        downloaded_bytes=int(d.get('downloaded_bytes') or 0),
+                        total_bytes=d.get('total_bytes'),
+                        filepath=d.get('filepath'),
+                        error=d.get('error'),
+                        config=d.get('config') or {},
+                        priority=d.get('priority') or 'normal',
+                        attempts=int(d.get('attempts') or 0),
+                        created_at=float(d.get('created_at') or time.time()),
+                        updated_at=float(d.get('updated_at') or time.time()),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                self.jobs[job.job_id] = job
+                # Interrupted/queued jobs get resumed on restart
+                if job.status in (JOB_QUEUED, JOB_RUNNING, JOB_PAUSED):
+                    job.status = JOB_QUEUED
+                    job.progress = 0.0
+                    self.queue.push(job.job_id, {'url': job.url, 'config': job.config},
+                                    priority=job.priority)
 
     # -- public API --------------------------------------------------------- #
     def create_job(self, url: str, config_overrides: Optional[Dict[str, Any]] = None,
@@ -195,6 +257,7 @@ class DownloadManager:
             self.on_event({'event': event, **payload})
         except Exception:
             pass
+        self._save_jobs()
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():
@@ -343,9 +406,15 @@ class DownloadManager:
             'fragment_retries': int(dl_cfg.get('fragment_retries', 10)),
             'socket_timeout': int(net_cfg.get('socket_timeout', 30)),
             'progress_hooks': [progress_hook],
+            'continuedl': True,
             'quiet': True,
             'no_warnings': True,
         }
+
+        # Per-job bandwidth throttling (KB/s)
+        ratelimit_kbps = dl_cfg.get('speed_limit_kbps', 0)
+        if ratelimit_kbps and float(ratelimit_kbps) > 0:
+            opts['ratelimit'] = float(ratelimit_kbps) * 1024
 
         if fmt_cfg.get('audio_only'):
             opts['format'] = 'bestaudio/best'

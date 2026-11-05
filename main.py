@@ -34,10 +34,10 @@ from PyQt6.QtWidgets import (
     QSplitter, QStackedWidget, QScrollArea, QSizePolicy,
     QAbstractItemView, QDialog, QDialogButtonBox, QFormLayout,
     QTabWidget, QGroupBox, QGridLayout, QSystemTrayIcon, QMenu, QStyle, QSlider, QLayout, QInputDialog,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QColorDialog,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QRect, QTimer
-from PyQt6.QtGui import QFont, QPixmap, QDesktopServices, QAction
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QRect, QTimer, QPoint
+from PyQt6.QtGui import QFont, QPixmap, QDesktopServices, QAction, QColor
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
@@ -102,6 +102,84 @@ def save_config(cfg: Dict) -> None:
     """Persist configuration dict to data/config.json."""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+# --------------------------------------------------------------------------- #
+# Config validation
+# --------------------------------------------------------------------------- #
+VALID_CONTAINERS = {"mp4", "mkv", "webm", "mov", "avi"}
+VALID_AUDIO_FORMATS = {"mp3", "m4a", "opus", "flac", "wav"}
+VALID_THEMES = {"dark", "light", "system", "night"}
+VALID_PROXY_SCHEMES = ("http://", "https://", "socks5://", "sockss://", "")
+
+
+def validate_config(cfg: Dict) -> List[str]:
+    """Validate config and fall back to safe defaults for invalid values.
+
+    Mutates `cfg` in-place with safe values and returns a list of warning
+    messages describing every correction made.
+    """
+    warnings: List[str] = []
+
+    def coerce_int(section: Dict, key: str, default: int,
+                   lo: int, hi: int, label: str) -> int:
+        raw = section.get(key, default)
+        try:
+            if isinstance(raw, bool):
+                raise TypeError("bool is not a valid integer")
+            val = int(raw)
+        except (TypeError, ValueError):
+            warnings.append(f"{label}: invalid value {raw!r}, reset to {default}")
+            section[key] = default
+            return default
+        if val < lo or val > hi:
+            warnings.append(f"{label}: {val} out of range [{lo}, {hi}], reset to {default}")
+            section[key] = default
+            return default
+        section[key] = val
+        return val
+
+    downloads = cfg.setdefault("downloads", {})
+    coerce_int(downloads, "concurrent_downloads", 3, 1, 10, "downloads.concurrent_downloads")
+    coerce_int(downloads, "max_retries", 5, 0, 10, "downloads.max_retries")
+    coerce_int(downloads, "fragment_retries", 10, 0, 20, "downloads.fragment_retries")
+    coerce_int(downloads, "retry_sleep", 10, 0, 3600, "downloads.retry_sleep")
+    coerce_int(downloads, "speed_limit_kbps", 0, 0, 10_000_000, "downloads.speed_limit_kbps")
+
+    network = cfg.setdefault("network", {})
+    coerce_int(network, "socket_timeout", 30, 1, 300, "network.socket_timeout")
+
+    fmt = cfg.setdefault("format", {})
+    merge = str(fmt.get("merge_output_format", "mp4")).lower()
+    if merge not in VALID_CONTAINERS:
+        warnings.append(f"format.merge_output_format: {merge!r} is invalid, reset to 'mp4'")
+        fmt["merge_output_format"] = "mp4"
+    audio_fmt = str(fmt.get("audio_format", "mp3")).lower()
+    if audio_fmt not in VALID_AUDIO_FORMATS:
+        warnings.append(f"format.audio_format: {audio_fmt!r} is invalid, reset to 'mp3'")
+        fmt["audio_format"] = "mp3"
+    res = fmt.get("resolution_cap", 1080)
+    try:
+        res = int(res)
+        if res not in (360, 480, 720, 1080, 1440, 2160, 4320):
+            warnings.append(f"format.resolution_cap: {res} is not a standard preset, reset to 1080")
+            fmt["resolution_cap"] = 1080
+    except (TypeError, ValueError):
+        warnings.append(f"format.resolution_cap: {res!r} is invalid, reset to 1080")
+        fmt["resolution_cap"] = 1080
+
+    proxy = str(network.get("proxy", "")).strip()
+    if proxy and not proxy.lower().startswith(VALID_PROXY_SCHEMES):
+        warnings.append(f"network.proxy: {proxy!r} has an unsupported scheme, cleared")
+        network["proxy"] = ""
+
+    app = cfg.setdefault("app", {})
+    theme = str(app.get("theme", "dark")).lower()
+    if theme not in VALID_THEMES:
+        warnings.append(f"app.theme: {theme!r} is invalid, reset to 'dark'")
+        app["theme"] = "dark"
+
+    return warnings
 
 
 # --------------------------------------------------------------------------- #
@@ -264,6 +342,11 @@ class DownloadWorker(QThread):
         completed(job_id, filepath)
         failed(job_id, error_message)
     """
+
+    progress = pyqtSignal(str, float, str, str, int, int)
+    status = pyqtSignal(str, str)
+    completed = pyqtSignal(str, str)
+    failed = pyqtSignal(str, str)
 
     def __init__(self, job_id: str, url: str, config: Dict,
                  config_overrides: Optional[Dict] = None):
@@ -456,6 +539,12 @@ class YTDLPApp(QMainWindow):
         self.setWindowTitle("YT-DLP WebUI")
         self.resize(1200, 800)
         self.config = load_config()
+        cfg_warnings = validate_config(self.config)
+        if cfg_warnings:
+            print("Config validation warnings:")
+            for w in cfg_warnings:
+                print(f"  - {w}")
+        self._config_warnings = cfg_warnings
         self.workers: Dict[str, DownloadWorker] = {}
         self.jobs: Dict[str, dict] = {}
         self.active_info_worker: Optional[InfoWorker] = None
@@ -475,15 +564,27 @@ class YTDLPApp(QMainWindow):
         self.gapless_enabled: bool = False
         self.multi_output_enabled: bool = False
         self.selected_output_device_ids: List[str] = []
-        self.theme = ThemeManager(self)
+        self.theme = ThemeManager(QApplication.instance())
         self.theme.set_theme(self.config.get("app", {}).get("theme", "dark"))
+        accent = self.config.get("app", {}).get("accent_color")
+        if accent:
+            try:
+                self.theme.set_accent(accent)
+            except ValueError:
+                pass
         self._init_player()
+        self._init_player_widgets()
         self._build_ui()
         init_db()
         self.refresh_jobs()
         self.refresh_library()
         self.refresh_music_library()
         self._setup_tray()
+        if self._config_warnings:
+            self.show_toast(
+                "Config validation",
+                f"{len(self._config_warnings)} invalid value(s) reset to safe defaults. Check the log.",
+            )
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self)
@@ -521,7 +622,25 @@ class YTDLPApp(QMainWindow):
         self.tray.hide()
         QApplication.instance().quit()
 
+    def _init_player_widgets(self):
+        """Create placeholder widgets for legacy player controls and timers."""
+        self.audio_output = QAudioOutput()
+        self.player_autoplay = self.player_panel.autoplay
+        self.player_file_lbl = self.player_panel.title_lbl
+        self.player_shuffle = QCheckBox("Shuffle")
+        self.player_shuffle.setVisible(False)
+        self.player_repeat = QPushButton("Repeat: All")
+        self.player_repeat.setVisible(False)
+        self.player_sleep = QCheckBox("Sleep")
+        self.player_sleep.setVisible(False)
+        self.player_repeat_mode = "all"
+        self._sleep_timer = QTimer(self)
+        self._sleep_timer.timeout.connect(self._sleep_timer_tick)
+        self._sleep_minutes = 0
+
     def closeEvent(self, event):
+        # Save playback position before closing/minimizing to tray
+        self._save_playback_position()
         # Minimize to tray instead of quitting
         if self.tray.isVisible():
             event.ignore()
@@ -794,9 +913,11 @@ class YTDLPApp(QMainWindow):
         self.show_toast("Auto-DJ", f"Added {len(rows)} similar tracks")
 
     def _normalize_volume(self):
-        """Simple volume normalization placeholder."""
-        self.audio_output.setVolume(0.75)
-        self.player_vol_slider.setValue(75)
+        """Simple volume normalization (sets master volume to 75%)."""
+        if self.player:
+            self.player.set_volume(0.75)
+        if self.player_panel:
+            self.player_panel.vol_slider.setValue(75)
         self.show_toast("Normalize", "Volume set to 75%")
 
     def _open_eq_bands(self):
@@ -1215,6 +1336,8 @@ class YTDLPApp(QMainWindow):
         QMessageBox.information(self, "Added", f"Download added to queue:\n{self.video_title}\n{url}")
 
     def refresh_home_cfg(self):
+        if not hasattr(self, "home_cfg"):
+            return
         c = self.config
         dl = c.get("downloads", {})
         fc = c.get("format", {})
@@ -1875,6 +1998,13 @@ class YTDLPApp(QMainWindow):
             if child.widget():
                 child.widget().deleteLater()
 
+        if not rows:
+            lbl = QLabel("Your music library is empty.<br>Download MP3s to see them here.")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color:#a0a0a8; font-size:14px; padding:40px;")
+            self.music_lib_grid.addWidget(lbl, 0, 0, 1, 6)
+            return
+
         cols = 6
         for i, it in enumerate(rows):
             card = MediaCard(
@@ -2004,7 +2134,6 @@ class YTDLPApp(QMainWindow):
             return
         self._save_recent_search(q)
         self.search_status.setText("Searching...")
-        self.search_results.setRowCount(0)
         self.sw = SearchWorker(q, max_results=20)
         self.sw.finished.connect(self._search_done)
         self.sw.failed.connect(lambda e: self.search_status.setText(f"Error: {e}"))
@@ -2049,6 +2178,13 @@ class YTDLPApp(QMainWindow):
             child = self.search_grid.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+
+        if not results:
+            lbl = QLabel("No results found. Try a different query.")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color:#a0a0a8; font-size:14px; padding:40px;")
+            self.search_grid.addWidget(lbl, 0, 0, 1, 4)
+            return
 
         cols = 4
         for i, r in enumerate(results):
@@ -2288,6 +2424,13 @@ class YTDLPApp(QMainWindow):
             if child.widget():
                 child.widget().deleteLater()
 
+        if not self.jobs:
+            lbl = QLabel("No downloads yet.<br>Drag a URL onto the window or paste one in Search.")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color:#a0a0a8; font-size:14px; padding:40px;")
+            self.queue_grid.addWidget(lbl, 0, 0, 1, 1)
+            return
+
         cols = 1
         for i, (jid, job) in enumerate(self.jobs.items()):
             card = QFrame()
@@ -2452,6 +2595,13 @@ class YTDLPApp(QMainWindow):
             child = self.lib_grid.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+
+        if not items:
+            lbl = QLabel("Your library is empty — downloads will appear here.")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl.setStyleSheet("color:#a0a0a8; font-size:14px; padding:40px;")
+            self.lib_grid.addWidget(lbl, 0, 0, 1, 5)
+            return
 
         cols = 5
         for i, it in enumerate(items):
@@ -2681,6 +2831,27 @@ class YTDLPApp(QMainWindow):
         self.s_theme.addItems(["dark", "light", "system"])
         self.s_theme.setCurrentText(app_cfg.get("theme", "dark"))
         form.addRow("Theme", self.s_theme)
+
+        accent_row = QHBoxLayout()
+        cur = self.theme.accent_color() or "Palette default"
+        self.s_accent_swatch = QLabel(cur)
+        self.s_accent_swatch.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.s_accent_swatch.setMinimumWidth(110)
+        self.s_accent_swatch.setStyleSheet(
+            f"padding:6px; border:1px solid #444; border-radius:4px; "
+            f"background:{self.theme.accent_color() or 'transparent'};"
+        )
+        accent_row.addWidget(self.s_accent_swatch)
+        pick = QPushButton("Pick")
+        pick.setFixedWidth(60)
+        pick.clicked.connect(self._pick_accent_color)
+        accent_row.addWidget(pick)
+        reset = QPushButton("Reset")
+        reset.setFixedWidth(60)
+        reset.clicked.connect(self._reset_accent_color)
+        accent_row.addWidget(reset)
+        form.addRow("Accent color", accent_row)
+
         lay.addLayout(form)
 
         upd = QHBoxLayout()
@@ -2697,6 +2868,32 @@ class YTDLPApp(QMainWindow):
         lay.addWidget(self.update_status)
         lay.addStretch()
         return w
+
+    def _pick_accent_color(self):
+        color = QColorDialog.getColor(
+            QColor(self.theme.accent_color() or "#3b82f6"), self, "Pick accent color"
+        )
+        if not color.isValid():
+            return
+        self.theme.set_accent(color.name())
+        self.config.setdefault("app", {})["accent_color"] = color.name()
+        save_config(self.config)
+        cur = self.theme.accent_color() or color.name()
+        self.s_accent_swatch.setText(cur)
+        self.s_accent_swatch.setStyleSheet(
+            f"padding:6px; border:1px solid #444; border-radius:4px; background:{cur};"
+        )
+        self.show_toast("Accent color", f"Accent set to {cur}")
+
+    def _reset_accent_color(self):
+        self.theme.set_accent(None)
+        self.config.setdefault("app", {})["accent_color"] = None
+        save_config(self.config)
+        self.s_accent_swatch.setText("Palette default")
+        self.s_accent_swatch.setStyleSheet(
+            "padding:6px; border:1px solid #444; border-radius:4px; background:transparent;"
+        )
+        self.show_toast("Accent color", "Palette default restored")
 
     def _settings_audio(self):
         w = QWidget()
@@ -2802,6 +2999,14 @@ class YTDLPApp(QMainWindow):
         c.setdefault("app", {})["theme"] = self.s_theme.currentText()
         # Save audio output device selection
         c.setdefault("audio", {})["output_device_ids"] = self.selected_output_device_ids
+        warnings = validate_config(c)
+        if warnings:
+            QMessageBox.warning(
+                self,
+                "Configuration invalid",
+                "Some values were invalid and were reset to safe defaults:\n\n"
+                + "\n".join(f"- {w}" for w in warnings),
+            )
         save_config(c)
         self.config = c
         self.refresh_home_cfg()
@@ -3643,19 +3848,7 @@ class EQBandsDialog(QDialog):
         self.accept()
 
 
-# --------------------------------------------------------------------------- #
-# Entry point
-# --------------------------------------------------------------------------- #
-def main():
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    w = YTDLPApp()
-    w.show()
-    sys.exit(app.exec())
 
-
-if __name__ == "__main__":
-    main()
 
 
 # --------------------------------------------------------------------------- #
@@ -3793,3 +3986,18 @@ class SearchWorker(QThread):
             self.finished.emit(results)
         except Exception as e:
             self.failed.emit(str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Entry point
+# --------------------------------------------------------------------------- #
+def main():
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    w = YTDLPApp()
+    w.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
