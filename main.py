@@ -822,18 +822,24 @@ class YTDLPApp(QMainWindow):
             self._player_skip(10000)
             event.accept()
         elif key == Qt.Key.Key_Up:
-            vol = min(100, self.player_vol_slider.value() + 10)
-            self.player_vol_slider.setValue(vol)
+            vol = min(100, self.player_panel.vol_slider.value() + 10)
+            self.player_panel.vol_slider.setValue(vol)
             event.accept()
         elif key == Qt.Key.Key_Down:
-            vol = max(0, self.player_vol_slider.value() - 10)
-            self.player_vol_slider.setValue(vol)
+            vol = max(0, self.player_panel.vol_slider.value() - 10)
+            self.player_panel.vol_slider.setValue(vol)
             event.accept()
         elif key == Qt.Key.Key_M:
             self.audio_output.setMuted(not self.audio_output.isMuted())
             event.accept()
         elif key == Qt.Key.Key_F:
             self.setWindowState(self.windowState() ^ Qt.WindowState.WindowMaximized)
+            event.accept()
+        elif key == Qt.Key.Key_N:
+            self._playlist_next()
+            event.accept()
+        elif key == Qt.Key.Key_P:
+            self._playlist_prev()
             event.accept()
         else:
             super().keyPressEvent(event)
@@ -981,6 +987,12 @@ class YTDLPApp(QMainWindow):
         self.player_panel._on_prev = self._playlist_prev
         self.player_panel._on_next = self._playlist_next
         self.player_panel._on_stop = self._player_stop
+        self.player_panel._on_lyrics = self._toggle_lyrics_panel
+        self.player_panel._on_album_art = self._open_album_art_viewer
+        self.player_panel._on_crossfade = self._toggle_crossfade
+        self.player_panel._on_gapless = self._toggle_gapless
+        self.player_panel._on_recent = self._show_recently_played
+        self.player_panel._on_mini = self._open_mini_player
         root.addWidget(self.player_panel)
 
         self.set_view("browser")

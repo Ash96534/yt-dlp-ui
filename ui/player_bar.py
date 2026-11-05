@@ -53,6 +53,14 @@ class PlayerBar(QFrame):
         self._collapsed_height = 64
         self._expanded_height = 110
 
+        # Callback attributes (set by parent MainWindow)
+        self._on_mini = None
+        self._on_lyrics = None
+        self._on_album_art = None
+        self._on_crossfade = None
+        self._on_gapless = None
+        self._on_recent = None
+
         self.setObjectName("playerBar")
         self.setFixedHeight(self._collapsed_height)
         self.setVisible(False)
@@ -198,6 +206,19 @@ class PlayerBar(QFrame):
         self.btn_prev.clicked.connect(self._prev)
         self.btn_next.clicked.connect(self._next)
         self.btn_stop.clicked.connect(self._stop)
+
+        if self._on_mini:
+            self.btn_mini.clicked.connect(self._on_mini)
+        if self._on_lyrics:
+            self.btn_lyrics.clicked.connect(self._on_lyrics)
+        if self._on_album_art:
+            self.btn_art.clicked.connect(self._on_album_art)
+        if self._on_crossfade:
+            self.btn_crossfade.clicked.connect(self._on_crossfade)
+        if self._on_gapless:
+            self.btn_gapless.clicked.connect(self._on_gapless)
+        if self._on_recent:
+            self.btn_recent.clicked.connect(self._on_recent)
 
     def _apply_theme(self) -> None:
         p = self.theme.palette()
