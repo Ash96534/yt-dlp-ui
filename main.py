@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QStackedWidget, QScrollArea, QSizePolicy,
     QAbstractItemView, QDialog, QDialogButtonBox, QFormLayout,
     QTabWidget, QGroupBox, QGridLayout, QSystemTrayIcon, QMenu, QStyle, QSlider, QLayout, QInputDialog,
+    QListWidget, QListWidgetItem,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QUrl, QRect, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QDesktopServices, QAction
@@ -31,6 +32,7 @@ from PyQt6.QtMultimediaWidgets import QVideoWidget
 from ui.nav_rail import NavRail
 from ui.player_bar import PlayerBar
 from ui.theme import ThemeManager
+from ui.widgets import MediaCard, PrimaryButton, GhostButton, SearchBar
 
 
 # --------------------------------------------------------------------------- #
@@ -1135,45 +1137,56 @@ class YTDLPApp(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(30, 30, 30, 30)
-        lay.setSpacing(16)
+        lay.setSpacing(20)
 
+        # Header
+        h = QLabel("Search YouTube")
+        h.setStyleSheet("font-size:24px; font-weight:bold; color:#e8e8ea;")
+        lay.addWidget(h)
+
+        sub = QLabel("Find videos, playlists, and channels")
+        sub.setStyleSheet("color:#a0a0a8; font-size:14px;")
+        lay.addWidget(sub)
+
+        # Search bar
         top = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search YouTube...")
+        self.search_input = SearchBar("Search YouTube...")
         self.search_input.returnPressed.connect(self.do_search)
-        btn = QPushButton("Search")
-        btn.setObjectName("primary")
+        btn = PrimaryButton("Search")
         btn.clicked.connect(self.do_search)
-        top.addWidget(self.search_input)
+        top.addWidget(self.search_input, 1)
         top.addWidget(btn)
 
-        batch_btn = QPushButton("Batch Playlist")
+        batch_btn = GhostButton("Batch Playlist")
         batch_btn.clicked.connect(self._open_batch_dialog)
         top.addWidget(batch_btn)
         lay.addLayout(top)
 
         # Recent searches
         self.recent_searches_lbl = QLabel("Recent searches")
-        self.recent_searches_lbl.setStyleSheet("color:#a6adc8; font-size:12px; font-weight:bold; margin-top:10px;")
+        self.recent_searches_lbl.setStyleSheet("color:#a0a0a8; font-size:12px; font-weight:bold;")
         lay.addWidget(self.recent_searches_lbl)
         self.recent_searches_flow = QFlowLayout()
         lay.addLayout(self.recent_searches_flow)
         self._refresh_recent_searches()
 
-        self.search_results = QTableWidget()
-        self.search_results.setColumnCount(5)
-        self.search_results.setHorizontalHeaderLabels(["Thumbnail", "Title", "Uploader", "Duration", ""])
-        self.search_results.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.search_results.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.search_results.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.search_results.cellDoubleClicked.connect(self._search_open)
-        lay.addWidget(self.search_results)
+        # Results grid (scrollable)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("QWidget { background: transparent; }")
+        self.search_grid = QGridLayout(scroll_widget)
+        self.search_grid.setSpacing(16)
+        self.search_grid.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(scroll_widget)
+        lay.addWidget(scroll, 1)
 
         self.search_status = QLabel("")
-        self.search_status.setStyleSheet("color:#a6adc8; font-size:12px;")
+        self.search_status.setStyleSheet("color:#a0a0a8; font-size:12px;")
         lay.addWidget(self.search_status)
 
-        back = QPushButton("← Back")
+        back = GhostButton("← Back")
         back.clicked.connect(lambda: self.set_view("browser"))
         lay.addWidget(back)
         return w
@@ -1261,93 +1274,155 @@ class YTDLPApp(QMainWindow):
     def _page_music(self):
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(30, 30, 30, 30)
-        lay.setSpacing(16)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        # Header bar
+        header = QFrame()
+        header.setFixedHeight(56)
+        header.setStyleSheet("QFrame { background: #181825; border-bottom: 1px solid #2a2a33; }")
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(20, 0, 20, 0)
 
         h = QLabel("Music Library")
-        h.setStyleSheet("font-size:24px; font-weight:bold; color:#cdd6f4;")
-        lay.addWidget(h)
+        h.setStyleSheet("font-size:20px; font-weight:bold; color:#e8e8ea;")
+        hl.addWidget(h)
+        hl.addStretch()
 
-        sub = QLabel("Download MP3s from YouTube, build playlists, and play your music library")
-        sub.setStyleSheet("color:#a6adc8; font-size:14px;")
-        sub.setWordWrap(True)
-        lay.addWidget(sub)
+        new_pl_btn = PrimaryButton("New Playlist")
+        new_pl_btn.setFixedWidth(100)
+        new_pl_btn.clicked.connect(self._new_playlist)
+        hl.addWidget(new_pl_btn)
 
-        # Music search / download bar
-        bar = QHBoxLayout()
-        self.music_search = QLineEdit()
-        self.music_search.setPlaceholderText("Search YouTube for music...")
+        lay.addWidget(header)
+
+        # Split: left sidebar + right content
+        split = QHBoxLayout()
+        split.setSpacing(0)
+        split.setContentsMargins(0, 0, 0, 0)
+
+        # Left sidebar: filters + playlists
+        sidebar = QFrame()
+        sidebar.setFixedWidth(260)
+        sidebar.setStyleSheet("QFrame { background: #141418; border-right: 1px solid #2a2a33; }")
+        sl = QVBoxLayout(sidebar)
+        sl.setContentsMargins(16, 16, 16, 16)
+        sl.setSpacing(12)
+
+        sl.addWidget(QLabel("Library"))
+        sl.addWidget(QLabel("Filters"))
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
+
+        self.music_filter_all = QPushButton("All")
+        self.music_filter_all.setCheckable(True)
+        self.music_filter_all.setChecked(True)
+        self.music_filter_all.setFixedWidth(60)
+        self.music_filter_all.clicked.connect(lambda: self._music_filter("all"))
+        filter_row.addWidget(self.music_filter_all)
+
+        self.music_filter_liked = QPushButton("Liked")
+        self.music_filter_liked.setCheckable(True)
+        self.music_filter_liked.setFixedWidth(60)
+        self.music_filter_liked.clicked.connect(lambda: self._music_filter("liked"))
+        filter_row.addWidget(self.music_filter_liked)
+
+        sl.addLayout(filter_row)
+
+        self.music_filter_wl = QPushButton("Watch Later")
+        self.music_filter_wl.setCheckable(True)
+        self.music_filter_wl.setFixedWidth(100)
+        self.music_filter_wl.clicked.connect(lambda: self._music_filter("watch_later"))
+        sl.addWidget(self.music_filter_wl)
+
+        sl.addSpacing(12)
+
+        sl.addWidget(QLabel("Playlists"))
+        self.music_playlist_list = QListWidget()
+        self.music_playlist_list.setFixedHeight(180)
+        self.music_playlist_list.setStyleSheet(
+            "QListWidget { background: transparent; border: none; color: #e8e8ea; font-size: 13px; }"
+            "QListWidget::item { padding: 8px; border-bottom: 1px solid #2a2a33; }"
+            "QListWidget::item:selected { background: #24242e; color: #60a5fa; }"
+        )
+        sl.addWidget(self.music_playlist_list)
+
+        sl.addStretch()
+
+        split.addWidget(sidebar)
+
+        # Right content: search + results + library
+        right = QFrame()
+        right.setStyleSheet("QFrame { background: #0f0f12; }")
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(24, 20, 24, 20)
+        rl.setSpacing(16)
+
+        # Search bar
+        search_bar = QHBoxLayout()
+        self.music_search = SearchBar("Search YouTube for music...")
         self.music_search.returnPressed.connect(self.do_music_search)
-        bar.addWidget(self.music_search, 1)
+        search_btn = PrimaryButton("Search")
+        search_btn.clicked.connect(self.do_music_search)
+        search_bar.addWidget(self.music_search, 1)
+        search_bar.addWidget(search_btn)
+        rl.addLayout(search_bar)
 
-        btn = QPushButton("Search")
-        btn.setObjectName("primary")
-        btn.clicked.connect(self.do_music_search)
-        bar.addWidget(btn)
-
-        import_btn = QPushButton("Import Playlist URL")
-        import_btn.clicked.connect(self._open_music_playlist_import)
-        bar.addWidget(import_btn)
-
-        disc_btn = QPushButton("Discovery Weekly")
-        disc_btn.clicked.connect(self._discovery_weekly)
-        bar.addWidget(disc_btn)
-
-        export_btn = QPushButton("Export Playlist")
-        export_btn.clicked.connect(self._export_playlist)
-        bar.addWidget(export_btn)
-
-        imp_btn = QPushButton("Import Playlist")
-        imp_btn.clicked.connect(self._import_playlist)
-        bar.addWidget(imp_btn)
-        lay.addLayout(bar)
-
-        # Mood playlists
-        mood_bar = QHBoxLayout()
-        mood_bar.addWidget(QLabel("Mood:"))
+        # Mood chips
+        mood_lay = QHBoxLayout()
+        mood_lay.addWidget(QLabel("Mood:"))
         for mood in ["Chill", "Workout", "Party", "Focus", "Sleep"]:
             mb = QPushButton(mood)
-            mb.setFixedWidth(70)
-            mb.setStyleSheet("QPushButton { color:#a6adc8; font-size:11px; border:1px solid #313244; border-radius:4px; } QPushButton:hover { background:#313244; color:#cdd6f4; }")
+            mb.setFixedWidth(64)
+            mb.setStyleSheet(
+                "QPushButton { color:#a0a0a8; font-size:11px; border:1px solid #2a2a33; "
+                "border-radius:16px; padding:4px; }"
+                "QPushButton:hover { background:#24242e; color:#e8e8ea; border-color:#60a5fa; }"
+            )
             mb.clicked.connect(lambda checked, m=mood: self._mood_playlist(m))
-            mood_bar.addWidget(mb)
-        mood_bar.addStretch()
-        lay.addLayout(mood_bar)
+            mood_lay.addWidget(mb)
+        mood_lay.addStretch()
+        rl.addLayout(mood_lay)
 
-        # Music results
-        self.music_results = QTableWidget()
-        self.music_results.setColumnCount(6)
-        self.music_results.setHorizontalHeaderLabels(["Thumbnail", "Title", "Artist", "Duration", "Action", ""])
-        self.music_results.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.music_results.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        lay.addWidget(self.music_results, 1)
+        # Search results
+        rl.addWidget(QLabel("Search Results"))
+        self.music_results_scroll = QScrollArea()
+        self.music_results_scroll.setWidgetResizable(True)
+        self.music_results_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.music_results_widget = QWidget()
+        self.music_results_widget.setStyleSheet("QWidget { background: transparent; }")
+        self.music_results_grid = QGridLayout(self.music_results_widget)
+        self.music_results_grid.setSpacing(12)
+        self.music_results_grid.setContentsMargins(0, 0, 0, 0)
+        self.music_results_scroll.setWidget(self.music_results_widget)
+        self.music_results_scroll.setMaximumHeight(260)
+        rl.addWidget(self.music_results_scroll)
 
         self.music_status = QLabel("")
-        self.music_status.setStyleSheet("color:#a6adc8; font-size:12px;")
-        lay.addWidget(self.music_status)
+        self.music_status.setStyleSheet("color:#a0a0a8; font-size:12px;")
+        rl.addWidget(self.music_status)
 
-        # Music library section
-        lib_bar = QHBoxLayout()
-        lib_bar.addWidget(QLabel("Your Music Library"))
-        lib_bar.addStretch()
-        self.music_lib_search = QLineEdit()
-        self.music_lib_search.setPlaceholderText("Search library...")
-        self.music_lib_search.setFixedWidth(200)
-        self.music_lib_search.textChanged.connect(self.refresh_music_library)
-        lib_bar.addWidget(self.music_lib_search)
-        lay.addLayout(lib_bar)
+        # Your library
+        rl.addWidget(QLabel("Your Library"))
+        self.music_lib_scroll = QScrollArea()
+        self.music_lib_scroll.setWidgetResizable(True)
+        self.music_lib_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.music_lib_widget = QWidget()
+        self.music_lib_widget.setStyleSheet("QWidget { background: transparent; }")
+        self.music_lib_grid = QGridLayout(self.music_lib_widget)
+        self.music_lib_grid.setSpacing(12)
+        self.music_lib_grid.setContentsMargins(0, 0, 0, 0)
+        self.music_lib_scroll.setWidget(self.music_lib_widget)
+        rl.addWidget(self.music_lib_scroll, 1)
 
-        self.music_library = QTableWidget()
-        self.music_library.setColumnCount(8)
-        self.music_library.setHorizontalHeaderLabels(["Like", "Cover", "Title", "Artist", "Radio", "Album", "Play", "Delete"])
-        self.music_library.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.music_library.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.music_library.setMaximumHeight(200)
-        lay.addWidget(self.music_library)
+        split.addWidget(right, 1)
+        lay.addLayout(split)
 
-        back = QPushButton("← Back")
+        back = GhostButton("← Back")
         back.clicked.connect(lambda: self.set_view("browser"))
         lay.addWidget(back)
+
         return w
 
     def _page_charts(self):
@@ -1562,6 +1637,17 @@ class YTDLPApp(QMainWindow):
         self._player_load(self.playlist[0])
         self.show_toast(f"{mood} Mix", f"{len(rows)} tracks")
 
+    def _new_playlist(self):
+        name, ok = QInputDialog.getText(self, "New Playlist", "Playlist name:")
+        if ok and name.strip():
+            self.music_playlist_list.addItem(QListWidgetItem(name.strip()))
+
+    def _music_filter(self, filter_type):
+        self.music_filter_all.setChecked(filter_type == "all")
+        self.music_filter_liked.setChecked(filter_type == "liked")
+        self.music_filter_wl.setChecked(filter_type == "watch_later")
+        self.refresh_music_library()
+
     def do_music_search(self):
         q = self.music_search.text().strip()
         if not q:
@@ -1575,11 +1661,24 @@ class YTDLPApp(QMainWindow):
 
     def _music_search_done(self, results):
         self.music_status.setText(f"{len(results)} results")
-        self.music_results.setRowCount(len(results))
+
+        # Clear existing grid
+        while self.music_results_grid.count():
+            child = self.music_results_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        cols = 5
         for i, r in enumerate(results):
-            self.music_results.setRowHeight(i, 70)
+            card = MediaCard(
+                title=r.get("title", ""),
+                subtitle=r.get("uploader", ""),
+                artwork=None,
+            )
+            card.setFixedSize(190, 150)
+
             thumb_lbl = QLabel()
-            thumb_lbl.setFixedSize(60, 60)
+            thumb_lbl.setFixedSize(190, 115)
             thumb_lbl.setStyleSheet("background:#181825; border-radius:4px;")
             thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if r.get("thumbnail"):
@@ -1589,26 +1688,39 @@ class YTDLPApp(QMainWindow):
                 def _on_thumb(resp, lbl=thumb_lbl):
                     pix = QPixmap()
                     pix.loadFromData(resp.readAll())
-                    lbl.setPixmap(pix.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    lbl.setPixmap(pix.scaled(190, 115, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                              Qt.TransformationMode.SmoothTransformation))
                 nam.finished.connect(_on_thumb)
                 nam.get(QNetworkRequest(QUrl(r["thumbnail"])))
-            self.music_results.setCellWidget(i, 0, thumb_lbl)
-            self.music_results.setItem(i, 1, QTableWidgetItem(r.get("title", "")))
-            self.music_results.setItem(i, 2, QTableWidgetItem(r.get("uploader", "")))
-            self.music_results.setItem(i, 3, QTableWidgetItem(r.get("duration_string") or "—"))
-            dl_btn = QPushButton("⬇ MP3")
+            card.layout().insertWidget(0, thumb_lbl)
+
+            dl_btn = PrimaryButton("MP3")
+            dl_btn.setFixedWidth(55)
             dl_btn.setProperty("url", r.get("webpage_url", ""))
             dl_btn.setProperty("title", r.get("title", ""))
             dl_btn.setProperty("uploader", r.get("uploader", ""))
             dl_btn.clicked.connect(self._music_download)
-            self.music_results.setCellWidget(i, 4, dl_btn)
-            add_btn = QPushButton("+")
+            card.add_action(dl_btn)
+
+            add_btn = GhostButton("+")
+            add_btn.setFixedWidth(40)
             add_btn.setProperty("url", r.get("webpage_url", ""))
             add_btn.setProperty("title", r.get("title", ""))
             add_btn.setProperty("uploader", r.get("uploader", ""))
             add_btn.clicked.connect(self._music_add_to_playlist_menu)
-            self.music_results.setCellWidget(i, 5, add_btn)
+            card.add_action(add_btn)
+
+            card.clicked.connect(
+                lambda checked, u=r.get("webpage_url", ""), t=r.get("title", ""),
+                u2=r.get("uploader", ""), i=r.get("id", ""): self._open_video(u, t, u2, i)
+            )
+
+            row = i // cols
+            col = i % cols
+            self.music_results_grid.addWidget(card, row, col)
+
+        self.music_results_grid.setColumnStretch(cols, 1)
+        self.music_results_grid.setRowStretch(len(results) // cols + 1, 1)
 
     def _music_download(self):
         btn = self.sender()
@@ -1665,51 +1777,81 @@ class YTDLPApp(QMainWindow):
         else:
             rows = c.execute("SELECT * FROM library WHERE is_music = '1' ORDER BY downloaded_at DESC").fetchall()
         c.close()
-        self.music_library.setRowCount(len(rows))
+
+        # Clear existing grid
+        while self.music_lib_grid.count():
+            child = self.music_lib_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        cols = 6
         for i, it in enumerate(rows):
-            self.music_library.setRowHeight(i, 50)
-            # Like
-            likeb = QPushButton("Liked" if it["is_liked"] == "1" else "Like")
-            likeb.setProperty("id", it["id"])
-            likeb.setFixedWidth(45)
-            likeb.setStyleSheet("QPushButton { border: none; font-size: 11px; } QPushButton:hover { color: #f38ba8; }")
-            likeb.clicked.connect(self._music_toggle_like)
-            self.music_library.setCellWidget(i, 0, likeb)
-            # Cover
+            card = MediaCard(
+                title=it["title"] or "",
+                subtitle=it["music_artist"] or "",
+                artwork=None,
+            )
+            card.setFixedSize(170, 130)
+
             cover_lbl = QLabel()
-            cover_lbl.setFixedSize(40, 40)
+            cover_lbl.setFixedSize(170, 95)
             cover_lbl.setStyleSheet("background:#181825; border-radius:4px;")
             cover_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if it["music_cover"]:
                 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
                 from PyQt6.QtGui import QPixmap
                 nam = QNetworkAccessManager()
-                def _on_thumb(resp, lbl=cover_lbl):
+                def _on_thumb(resp, lbl=cover_lbl, cover=it["music_cover"]):
                     pix = QPixmap()
                     pix.loadFromData(resp.readAll())
-                    lbl.setPixmap(pix.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    lbl.setPixmap(pix.scaled(170, 95, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                              Qt.TransformationMode.SmoothTransformation))
                 nam.finished.connect(_on_thumb)
                 nam.get(QNetworkRequest(QUrl(it["music_cover"])))
-            self.music_library.setCellWidget(i, 1, cover_lbl)
-            self.music_library.setItem(i, 2, QTableWidgetItem(it["title"] or ""))
-            self.music_library.setItem(i, 3, QTableWidgetItem(it["music_artist"] or ""))
-            # Artist Radio button
+            card.layout().insertWidget(0, cover_lbl)
+
+            likeb = QPushButton("Liked" if it["is_liked"] == "1" else "Like")
+            likeb.setProperty("id", it["id"])
+            likeb.setFixedWidth(55)
+            likeb.setStyleSheet("QPushButton { border: none; font-size: 10px; } QPushButton:hover { color: #f38ba8; }")
+            likeb.clicked.connect(self._music_toggle_like)
+            card.add_action(likeb)
+
             ardb = QPushButton("Radio")
             ardb.setProperty("artist", it["music_artist"] or "")
             ardb.setFixedWidth(45)
-            ardb.setStyleSheet("QPushButton { border: none; font-size: 11px; } QPushButton:hover { color: #89b4fa; }")
+            ardb.setStyleSheet("QPushButton { border: none; font-size: 10px; } QPushButton:hover { color: #60a5fa; }")
             ardb.clicked.connect(self._artist_radio_from_btn)
-            self.music_library.setCellWidget(i, 4, ardb)
-            self.music_library.setItem(i, 5, QTableWidgetItem(it["music_album"] or ""))
+            card.add_action(ardb)
+
             playb = QPushButton("Play")
             playb.setProperty("path", it["filepath"])
             playb.clicked.connect(self._music_play)
-            self.music_library.setCellWidget(i, 6, playb)
+            card.add_action(playb)
+
             delb = QPushButton("Delete")
             delb.setProperty("id", it["id"])
+            delb.setFixedWidth(45)
+            delb.setStyleSheet("QPushButton { border: none; font-size: 10px; } QPushButton:hover { color: #ef4444; }")
             delb.clicked.connect(self._music_del)
-            self.music_library.setCellWidget(i, 7, delb)
+            card.add_action(delb)
+
+            card.clicked.connect(
+                lambda checked, p=it["filepath"]: self._music_play_from_card(p)
+            )
+
+            row = i // cols
+            col = i % cols
+            self.music_lib_grid.addWidget(card, row, col)
+
+        self.music_lib_grid.setColumnStretch(cols, 1)
+        self.music_lib_grid.setRowStretch(len(rows) // cols + 1, 1)
+
+    def _music_play_from_card(self, path: str):
+        if path and os.path.exists(path):
+            self._player_load(path)
+        else:
+            QMessageBox.warning(self, "Playback", "File not found: " + str(path))
 
     def _artist_radio_from_btn(self):
         btn = self.sender()
@@ -1810,12 +1952,25 @@ class YTDLPApp(QMainWindow):
 
     def _search_done(self, results):
         self.search_status.setText(f"{len(results)} results")
-        self.search_results.setRowCount(len(results))
+
+        # Clear existing grid
+        while self.search_grid.count():
+            child = self.search_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        cols = 4
         for i, r in enumerate(results):
-            self.search_results.setRowHeight(i, 70)
-            # thumbnail
+            card = MediaCard(
+                title=r.get("title", ""),
+                subtitle=r.get("uploader", ""),
+                artwork=None,
+            )
+            card.setFixedSize(240, 160)
+
+            # Thumbnail
             thumb_lbl = QLabel()
-            thumb_lbl.setFixedSize(120, 70)
+            thumb_lbl.setFixedSize(240, 135)
             thumb_lbl.setStyleSheet("background:#181825; border-radius:4px;")
             thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if r.get("thumbnail"):
@@ -1825,34 +1980,81 @@ class YTDLPApp(QMainWindow):
                 def _on_thumb(resp, lbl=thumb_lbl):
                     pix = QPixmap()
                     pix.loadFromData(resp.readAll())
-                    lbl.setPixmap(pix.scaled(120, 70, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    lbl.setPixmap(pix.scaled(240, 135, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                              Qt.TransformationMode.SmoothTransformation))
                 nam.finished.connect(_on_thumb)
                 nam.get(QNetworkRequest(QUrl(r["thumbnail"])))
-            self.search_results.setCellWidget(i, 0, thumb_lbl)
-            # title
-            ti = QTableWidgetItem(r.get("title", ""))
-            self.search_results.setItem(i, 1, ti)
-            # uploader
-            self.search_results.setItem(i, 2, QTableWidgetItem(r.get("uploader", "")))
-            # duration
-            self.search_results.setItem(i, 3, QTableWidgetItem(r.get("duration_string") or "—"))
-            # open button
-            ob = QPushButton("Open")
-            ob.setProperty("video_id", r.get("id", ""))
-            ob.setProperty("video_url", r.get("webpage_url", ""))
-            ob.setProperty("video_title", r.get("title", ""))
-            ob.setProperty("video_uploader", r.get("uploader", ""))
-            ob.clicked.connect(self._search_open_btn)
-            self.search_results.setCellWidget(i, 4, ob)
+            card.layout().insertWidget(0, thumb_lbl)
 
-    def _search_open(self, row, col):
-        w = self.search_results.cellWidget(row, 4)
-        if w:
-            self._open_video(w.property("video_url"),
-                             w.property("video_title"),
-                             w.property("video_uploader"),
-                             w.property("video_id"))
+            # Duration badge
+            dur_lbl = QLabel(r.get("duration_string") or "—")
+            dur_lbl.setStyleSheet(
+                "QLabel { background: rgba(0,0,0,160); color:#ffffff; font-size:10px; "
+                "padding:2px 6px; border-radius:3px; }"
+            )
+            dur_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom)
+            dur_lbl.setFixedSize(240, 20)
+            dur_lbl.move(0, 115)
+            thumb_lbl.layout().addWidget(dur_lbl) if thumb_lbl.layout() else None
+
+            # Action buttons
+            dl_btn = PrimaryButton("MP3")
+            dl_btn.setFixedWidth(60)
+            dl_btn.setProperty("video_url", r.get("webpage_url", ""))
+            dl_btn.setProperty("video_title", r.get("title", ""))
+            dl_btn.setProperty("video_uploader", r.get("uploader", ""))
+            dl_btn.clicked.connect(self._search_download)
+            card.add_action(dl_btn)
+
+            q_btn = GhostButton("Queue")
+            q_btn.setFixedWidth(60)
+            q_btn.setProperty("video_url", r.get("webpage_url", ""))
+            q_btn.setProperty("video_title", r.get("title", ""))
+            q_btn.setProperty("video_uploader", r.get("uploader", ""))
+            q_btn.clicked.connect(self._search_queue)
+            card.add_action(q_btn)
+
+            # Click card to open video detail
+            card.clicked.connect(
+                lambda checked, u=r.get("webpage_url", ""), t=r.get("title", ""),
+                u2=r.get("uploader", ""), i=r.get("id", ""): self._open_video(u, t, u2, i)
+            )
+
+            row = i // cols
+            col = i % cols
+            self.search_grid.addWidget(card, row, col)
+
+        self.search_grid.setColumnStretch(cols, 1)
+        self.search_grid.setRowStretch(len(results) // cols + 1, 1)
+
+    def _search_download(self):
+        btn = self.sender()
+        url = btn.property("video_url")
+        title = btn.property("video_title")
+        uploader = btn.property("video_uploader")
+        if not url:
+            return
+        self._add_url_to_queue(url)
+        self.set_view("queue")
+        self.show_toast("Added to queue", title)
+
+    def _search_queue(self):
+        btn = self.sender()
+        url = btn.property("video_url")
+        title = btn.property("video_title")
+        uploader = btn.property("video_uploader")
+        if not url:
+            return
+        self._add_url_to_queue(url)
+        self.set_view("queue")
+        self.show_toast("Added to queue", title)
+
+    def _search_open_btn(self):
+        btn = self.sender()
+        self._open_video(btn.property("video_url"),
+                         btn.property("video_title"),
+                         btn.property("video_uploader"),
+                         btn.property("video_id"))
 
     def _search_open_btn(self):
         btn = self.sender()
