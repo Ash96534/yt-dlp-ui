@@ -158,9 +158,17 @@ EOF
             # YT-DLP WebUI v1.0.4
 
             ## What's New
-            - Fixed CI build: add PyQt6-WebEngine dependency
-            - Fixed spec file for cross-platform compatibility
-            - Fixed FFmpeg download URLs for all platforms
+            - Integrated Chromium YouTube browser
+            - Download queue with pause/resume/retry/cancel
+            - Built-in media player with speed controls
+            - Music library with Artist Radio, Album Radio, Discovery Weekly
+            - Mood-based playlists (Chill, Workout, Party, Focus, Sleep)
+            - Multi-output audio (play to multiple devices simultaneously)
+            - Download MP3s directly from YouTube
+            - SQLite library with play count and watch history
+            - System tray with now-playing tooltip
+            - Auto-update yt-dlp
+            - Export/import playlists (JSON)
 
             ## Installation
             - **Windows**: Download `YT-DLP-WebUI-Setup-1.0.4.exe` or portable `.zip`
@@ -176,5 +184,4 @@ EOF
             ## Requirements
             - Windows 10/11, macOS 10.15+, or Linux
             - FFmpeg (required for audio extraction and metadata embedding; install separately)
-
 ---
