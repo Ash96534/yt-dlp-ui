@@ -2133,53 +2133,143 @@ class YTDLPApp(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(30, 30, 30, 30)
-        lay.setSpacing(12)
+        lay.setSpacing(16)
 
-        btns = QHBoxLayout()
-        refresh = QPushButton("Refresh")
-        refresh.clicked.connect(self.refresh_jobs)
-        btns.addWidget(refresh)
-        btns.addStretch()
-        lay.addLayout(btns)
+        # Header
+        h = QLabel("Download Queue")
+        h.setStyleSheet("font-size:24px; font-weight:bold; color:#e8e8ea;")
+        lay.addWidget(h)
 
-        self.queue_table = QTableWidget()
-        self.queue_table.setColumnCount(7)
-        self.queue_table.setHorizontalHeaderLabels(["Job", "URL", "Status", "Progress", "Speed", "ETA", ""])
-        self.queue_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        lay.addWidget(self.queue_table)
+        sub = QLabel("Manage your downloads")
+        sub.setStyleSheet("color:#a0a0a8; font-size:14px;")
+        lay.addWidget(sub)
 
-        back = QPushButton("← Back")
+        # Stats row
+        stats = QHBoxLayout()
+        self.queue_stats = {}
+        for label, key in [("Queued", "queued"), ("Running", "running"), ("Completed", "completed"), ("Failed", "failed")]:
+            card = QFrame()
+            card.setFixedSize(120, 70)
+            card.setStyleSheet("QFrame { background: #181825; border-radius: 8px; }")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(12, 10, 12, 10)
+            val = QLabel("0")
+            val.setStyleSheet("QLabel { font-size: 20px; font-weight: bold; color:#e8e8ea; }")
+            lbl = QLabel(label)
+            lbl.setStyleSheet("QLabel { color: #a0a0a8; font-size: 11px; }")
+            cl.addWidget(val)
+            cl.addWidget(lbl)
+            stats.addWidget(card)
+            self.queue_stats[key] = val
+        stats.addStretch()
+        lay.addLayout(stats)
+
+        # Scrollable job list
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.queue_widget = QWidget()
+        self.queue_widget.setStyleSheet("QWidget { background: transparent; }")
+        self.queue_grid = QGridLayout(self.queue_widget)
+        self.queue_grid.setSpacing(10)
+        self.queue_grid.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(self.queue_widget)
+        lay.addWidget(scroll, 1)
+
+        back = GhostButton("← Back")
         back.clicked.connect(lambda: self.set_view("browser"))
         lay.addWidget(back)
         return w
 
     def refresh_jobs(self):
-        self.queue_table.setColumnCount(8)
-        self.queue_table.setHorizontalHeaderLabels(["Job", "URL", "Status", "Progress", "Speed", "ETA", "", ""])
-        self.queue_table.setRowCount(0)
-        self.queue_table.setRowCount(len(self.jobs))
+        # Update stats
+        stats = {"queued": 0, "running": 0, "completed": 0, "failed": 0}
+        for j in self.jobs.values():
+            s = j.get("status", "queued")
+            if s in stats:
+                stats[s] += 1
+        for k, v in stats.items():
+            self.queue_stats[k].setText(str(v))
+
+        # Clear existing grid
+        while self.queue_grid.count():
+            child = self.queue_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        cols = 1
         for i, (jid, job) in enumerate(self.jobs.items()):
-            self.queue_table.setItem(i, 0, QTableWidgetItem(jid[:8]))
-            self.queue_table.setItem(i, 1, QTableWidgetItem(job.get("url", "")))
-            self.queue_table.setItem(i, 2, QTableWidgetItem(job.get("status", "")))
+            card = QFrame()
+            card.setFixedHeight(64)
+            card.setStyleSheet(
+                "QFrame { background: #181825; border: 1px solid #2a2a33; border-radius: 8px; }"
+            )
+            cl = QHBoxLayout(card)
+            cl.setContentsMargins(12, 8, 12, 8)
+            cl.setSpacing(12)
+
+            # Status dot
+            status = job.get("status", "queued")
+            status_color = {
+                "queued": "#a0a0a8",
+                "running": "#60a5fa",
+                "paused": "#f59e0b",
+                "completed": "#22c55e",
+                "failed": "#ef4444",
+                "cancelled": "#64748b",
+            }.get(status, "#a0a0a8")
+            status_dot = QLabel()
+            status_dot.setFixedSize(8, 8)
+            status_dot.setStyleSheet(f"QLabel {{ background: {status_color}; border-radius: 4px; }}")
+            cl.addWidget(status_dot)
+
+            # Title/URL
+            title_lbl = QLabel(job.get("url", "")[:60])
+            title_lbl.setStyleSheet("QLabel { color: #e8e8ea; font-size: 13px; }")
+            title_lbl.setWordWrap(True)
+            cl.addWidget(title_lbl, 1)
+
+            # Progress bar
             pb = QProgressBar()
+            pb.setFixedWidth(150)
             pb.setValue(int(job.get("progress", 0)))
-            self.queue_table.setCellWidget(i, 3, pb)
-            self.queue_table.setItem(i, 4, QTableWidgetItem(job.get("speed", "")))
-            self.queue_table.setItem(i, 5, QTableWidgetItem(job.get("eta", "")))
-            delb = QPushButton("Del")
-            delb.setProperty("job_id", jid)
-            delb.clicked.connect(self._queue_del)
-            self.queue_table.setCellWidget(i, 6, delb)
-            status = job.get("status", "")
+            pb.setTextVisible(False)
+            pb.setStyleSheet(
+                f"QProgressBar {{ border: none; border-radius: 4px; background: #24242e; height: 6px; }}"
+                f"QProgressBar::chunk {{ background: #60a5fa; border-radius: 4px; }}"
+            )
+            cl.addWidget(pb)
+
+            # Speed / ETA
+            info_lbl = QLabel()
+            info_lbl.setStyleSheet("QLabel { color: #a0a0a8; font-size: 11px; }")
+            info_lbl.setText(f"{job.get('speed', '')}  {job.get('eta', '')}")
+            cl.addWidget(info_lbl)
+
+            # Actions
             if status in ("failed", "cancelled"):
-                rb = QPushButton("Retry")
+                rb = PrimaryButton("Retry")
+                rb.setFixedWidth(70)
                 rb.setProperty("job_id", jid)
                 rb.clicked.connect(self._queue_retry)
-                self.queue_table.setCellWidget(i, 7, rb)
+                cl.addWidget(rb)
             else:
-                self.queue_table.setCellWidget(i, 7, QLabel(""))
+                delb = QPushButton("Delete")
+                delb.setFixedWidth(70)
+                delb.setStyleSheet(
+                    "QPushButton { border: none; border-radius: 4px; color: #a0a0a8; font-size: 11px; }"
+                    "QPushButton:hover { background: #24242e; color: #ef4444; }"
+                )
+                delb.setProperty("job_id", jid)
+                delb.clicked.connect(self._queue_del)
+                cl.addWidget(delb)
+
+            row = i // cols
+            col = i % cols
+            self.queue_grid.addWidget(card, row, col)
+
+        self.queue_grid.setColumnStretch(cols, 1)
+        self.queue_grid.setRowStretch(len(self.jobs) // cols + 1, 1)
 
     def _queue_del(self):
         btn = self.sender()
