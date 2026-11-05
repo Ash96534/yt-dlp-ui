@@ -29,6 +29,7 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineS
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
+from ui.audio_devices import AudioOutputDevice, MultiOutputManager
 from ui.nav_rail import NavRail
 from ui.player_bar import PlayerBar
 from ui.theme import ThemeManager
@@ -395,7 +396,7 @@ class YTDLPApp(QMainWindow):
         self.workers: Dict[str, DownloadWorker] = {}
         self.jobs: Dict[str, dict] = {}
         self.active_info_worker: Optional[InfoWorker] = None
-        self.player: Optional[QMediaPlayer] = None
+        self.player: Optional[MultiOutputManager] = None
         self.audio_output: Optional[QAudioOutput] = None
         self.video_widget: Optional[QVideoWidget] = None
         self.player_panel: Optional[QFrame] = None
@@ -409,6 +410,8 @@ class YTDLPApp(QMainWindow):
         self.playlist_index: int = -1
         self.crossfade_enabled: bool = False
         self.gapless_enabled: bool = False
+        self.multi_output_enabled: bool = False
+        self.selected_output_device_ids: List[str] = []
         self.theme = ThemeManager(self)
         self.theme.set_theme(self.config.get("app", {}).get("theme", "dark"))
         self._init_player()
@@ -474,25 +477,40 @@ class YTDLPApp(QMainWindow):
             self.tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, msecs)
 
     def _init_player(self):
-        self.player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.audio_output.setVolume(0.7)
-        self.player.setAudioOutput(self.audio_output)
-
+        self.player = MultiOutputManager(self.video_widget, self)
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumSize(480, 270)
-        self.player.setVideoOutput(self.video_widget)
+        self.player._video_widget = self.video_widget
 
         self.player_timer = QTimer()
         self.player_timer.setInterval(1000)
         self.player_timer.timeout.connect(self._player_update_position)
 
-        self.player.positionChanged.connect(self._player_position_changed)
-        self.player.positionChanged.connect(self._update_lyrics)
-        self.player.durationChanged.connect(self._player_duration_changed)
-        self.player.playbackStateChanged.connect(self._player_state_changed)
-        self.player.mediaStatusChanged.connect(self._player_media_status_changed)
-        self.player.errorOccurred.connect(self._player_error)
+        self.player_panel = PlayerBar(
+            self.player, self.audio_output, self.video_widget, self.theme, self
+        )
+        self.player_panel._on_prev = self._playlist_prev
+        self.player_panel._on_next = self._playlist_next
+        self.player_panel._on_stop = self._player_stop
+        self.player_panel._on_lyrics = self._toggle_lyrics_panel
+        self.player_panel._on_album_art = self._open_album_art_viewer
+        self.player_panel._on_crossfade = self._toggle_crossfade
+        self.player_panel._on_gapless = self._toggle_gapless
+        self.player_panel._on_recent = self._show_recently_played
+        self.player_panel._on_mini = self._open_mini_player
+
+        # Load saved output device selection
+        self.selected_output_device_ids = self.config.get(
+            "audio", {}
+        ).get("output_device_ids", [])
+        if self.selected_output_device_ids:
+            self.player.set_outputs(self.selected_output_device_ids)
+        else:
+            # Default to system default device
+            default = MultiOutputManager.default_output_device()
+            if default:
+                self.player.set_outputs([default.id])
+                self.selected_output_device_ids = [default.id]
 
     def _player_media_status_changed(self, status):
         from PyQt6.QtMultimedia import QMediaPlayer
@@ -605,7 +623,7 @@ class YTDLPApp(QMainWindow):
         row = c.execute("SELECT position FROM playback_positions WHERE filepath = ?", (filepath,)).fetchone()
         saved_pos = row[0] if row else 0
         c.close()
-        self.player.setSource(QUrl.fromLocalFile(filepath))
+        self.player.set_source(filepath)
         self.player.play()
         self.player_panel.show()
         self.player_file_lbl.setText(os.path.basename(filepath))
@@ -614,10 +632,10 @@ class YTDLPApp(QMainWindow):
             self.tray.setToolTip(f"YT-DLP WebUI — Now Playing: {os.path.basename(filepath)}")
         # Apply saved position after a short delay (player needs to load first)
         if saved_pos > 0:
-            QTimer.singleShot(1500, lambda: self.player.setPosition(saved_pos))
+            QTimer.singleShot(1500, lambda: self.player.set_position(saved_pos))
 
     def _player_toggle(self):
-        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+        if self.player.player_state() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()
@@ -629,9 +647,9 @@ class YTDLPApp(QMainWindow):
             self.tray.setToolTip("YT-DLP WebUI")
 
     def _save_playback_position(self):
-        if not self.player or not self.player.source():
+        if not self.player or not self.player._current_source:
             return
-        filepath = self.player.source().toLocalFile()
+        filepath = self.player._current_source
         if not filepath:
             return
         pos = self.player.position()
@@ -786,23 +804,24 @@ class YTDLPApp(QMainWindow):
         dlg.exec()
 
     def _player_seek(self, value):
-        self.player.setPosition(value)
+        self.player.set_position(value)
 
     def _player_set_volume(self, value):
-        self.audio_output.setVolume(value / 100.0)
+        self.player.set_volume(value / 100.0)
 
     def _player_skip(self, ms):
-        self.player.setPosition(self.player.position() + ms)
+        self.player.set_position(self.player.position() + ms)
 
     def _player_set_speed(self, text):
         rate = float(text.replace("x", ""))
-        self.player.setPlaybackRate(rate)
+        for entry in self.player._outputs.values():
+            entry["player"].setPlaybackRate(rate)
 
     def _chapter_seek(self):
         btn = self.sender()
         ms = btn.property("ms")
         if ms is not None:
-            self.player.setPosition(int(ms))
+            self.player.set_position(int(ms))
 
     @staticmethod
     def _fmt_chapter(seconds):
@@ -980,19 +999,7 @@ class YTDLPApp(QMainWindow):
 
         root.addLayout(top, 1)
 
-        # Bottom: player bar
-        self.player_panel = PlayerBar(
-            self.player, self.audio_output, self.video_widget, self.theme, self
-        )
-        self.player_panel._on_prev = self._playlist_prev
-        self.player_panel._on_next = self._playlist_next
-        self.player_panel._on_stop = self._player_stop
-        self.player_panel._on_lyrics = self._toggle_lyrics_panel
-        self.player_panel._on_album_art = self._open_album_art_viewer
-        self.player_panel._on_crossfade = self._toggle_crossfade
-        self.player_panel._on_gapless = self._toggle_gapless
-        self.player_panel._on_recent = self._show_recently_played
-        self.player_panel._on_mini = self._open_mini_player
+        # Bottom: player bar (created in _init_player)
         root.addWidget(self.player_panel)
 
         self.set_view("browser")
@@ -2520,6 +2527,7 @@ class YTDLPApp(QMainWindow):
         tabs.addTab(self._settings_format(), "Format")
         tabs.addTab(self._settings_network(), "Network")
         tabs.addTab(self._settings_appearance(), "Appearance")
+        tabs.addTab(self._settings_audio(), "Audio")
         lay.addWidget(tabs)
 
         saveb = QPushButton("Save config")
@@ -2618,6 +2626,92 @@ class YTDLPApp(QMainWindow):
         lay.addStretch()
         return w
 
+    def _settings_audio(self):
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(20, 20, 20, 20)
+        lay.setSpacing(16)
+
+        h = QLabel("Audio Output Devices")
+        h.setStyleSheet("font-size:18px; font-weight:bold; color:#e8e8ea;")
+        lay.addWidget(h)
+
+        sub = QLabel("Select which audio devices to play to simultaneously. "
+                     "Select multiple for multi-output (e.g., Bluetooth speaker + headphones).")
+        sub.setStyleSheet("color:#a0a0a8; font-size:13px;")
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+
+        # Device list
+        self.audio_device_list = QListWidget()
+        self.audio_device_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.audio_device_list.setStyleSheet(
+            "QListWidget { background: #181825; border: 1px solid #2a2a33; border-radius: 6px; "
+            "color: #e8e8ea; font-size: 13px; }"
+            "QListWidget::item { padding: 10px; border-bottom: 1px solid #2a2a33; }"
+            "QListWidget::item:selected { background: #3b82f6; color: #ffffff; }"
+        )
+        lay.addWidget(self.audio_device_list)
+
+        # Refresh button
+        refresh_btn = PrimaryButton("Refresh Devices")
+        refresh_btn.clicked.connect(self._refresh_audio_devices)
+        lay.addWidget(refresh_btn)
+
+        # Current selection info
+        self.audio_status = QLabel("")
+        self.audio_status.setStyleSheet("color:#a0a0a8; font-size:12px;")
+        lay.addWidget(self.audio_status)
+
+        lay.addStretch()
+
+        # Populate devices
+        self._refresh_audio_devices()
+        return w
+
+    def _refresh_audio_devices(self):
+        """Refresh the audio device list in settings."""
+        self.audio_device_list.clear()
+        devices = MultiOutputManager.available_output_devices()
+        default = MultiOutputManager.default_output_device()
+
+        for dev in devices:
+            item = QListWidgetItem(dev.name)
+            item.setData(Qt.ItemDataRole.UserRole, dev.device.id())
+            if dev.is_default:
+                item.setText(f"{dev.name} (default)")
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if dev.device.id() in self.selected_output_device_ids
+                else Qt.CheckState.Unchecked
+            )
+            self.audio_device_list.addItem(item)
+
+        self.audio_status.setText(
+            f"{len(devices)} output device(s) found. "
+            f"Selected: {len(self.selected_output_device_ids)}"
+        )
+
+    def _apply_audio_devices(self):
+        """Apply selected audio devices from the settings list."""
+        selected = []
+        for i in range(self.audio_device_list.count()):
+            item = self.audio_device_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected.append(item.data(Qt.ItemDataRole.UserRole))
+
+        self.selected_output_device_ids = selected
+        self.player.set_outputs(selected)
+
+        # Save to config
+        c = self.config
+        c.setdefault("audio", {})["output_device_ids"] = selected
+        save_config(c)
+        self.config = c
+
+        self.show_toast("Audio Output", f"{len(selected)} device(s) selected")
+
+
     def save_settings(self):
         c = self.config
         c.setdefault("downloads", {})["default_path"] = self.s_dl_path.text()
@@ -2634,10 +2728,13 @@ class YTDLPApp(QMainWindow):
         c.setdefault("auth", {})["cookies_from_browser"] = self.s_auth_cookies.text()
         c["auth"]["cookies_file"] = self.s_auth_cookiefile.text()
         c.setdefault("app", {})["theme"] = self.s_theme.currentText()
+        # Save audio output device selection
+        c.setdefault("audio", {})["output_device_ids"] = self.selected_output_device_ids
         save_config(c)
         self.config = c
         self.refresh_home_cfg()
         self.apply_theme()
+        self.player.set_outputs(self.selected_output_device_ids)
         QMessageBox.information(self, "Saved", "Configuration saved. Theme applied.")
 
     def _update_yt_dlp(self):
