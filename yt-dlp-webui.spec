@@ -27,6 +27,7 @@ a = Analysis(
         'PyQt6.QtWidgets',
         'PyQt6.QtWebEngineWidgets',
         'PyQt6.QtWebEngineCore',
+        'PyQt6.QtWebChannel',
         'PyQt6.QtMultimedia',
         'PyQt6.QtMultimediaWidgets',
         'PyQt6.QtNetwork',
