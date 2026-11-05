@@ -63,20 +63,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 libfontconfig1
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller yt-dlp-webui.spec --clean --noconfirm
-
       - name: Download appimagetool
         run: |
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool.AppImage
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller yt-dlp-webui.spec --clean --noconfirm
 
       - name: Build AppImage
         run: |
           mkdir -p appdir/usr/bin
           cp dist/yt-dlp-webui/yt-dlp-webui appdir/usr/bin/
           chmod +x appdir/usr/bin/yt-dlp-webui
+          cat > appdir/usr/share/applications/yt-dlp-webui.desktop << EOF
+[Desktop Entry]
+Name=YT-DLP WebUI
+Comment=YouTube Browser with Integrated Downloader
+Exec=yt-dlp-webui
+Icon=yt-dlp-webui
+Type=Application
+Categories=AudioVideo;Network;
+EOF
+          cp ffmpeg/bin/ffmpeg "$APPDIR/usr/share/icons/hicolor/256x256/apps/yt-dlp-webui.png" 2>/dev/null || true
+          cat > "$APPDIR/AppRun" << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+exec ./usr/bin/yt-dlp-webui "$@"
+EOF
+          chmod +x "$APPDIR/AppRun"
           ./appimagetool.AppImage appdir dist/YT-DLP-WebUI-1.0.4-x86_64.AppImage
 
       - name: Upload artifact
