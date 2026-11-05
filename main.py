@@ -2309,31 +2309,45 @@ class YTDLPApp(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(30, 30, 30, 30)
-        lay.setSpacing(12)
+        lay.setSpacing(16)
 
+        # Header
+        h = QLabel("Library")
+        h.setStyleSheet("font-size:24px; font-weight:bold; color:#e8e8ea;")
+        lay.addWidget(h)
+
+        sub = QLabel("Your downloaded media")
+        sub.setStyleSheet("color:#a0a0a8; font-size:14px;")
+        lay.addWidget(sub)
+
+        # Top bar: search + actions
         top = QHBoxLayout()
-        self.lib_search = QLineEdit()
-        self.lib_search.setPlaceholderText("Search library...")
+        self.lib_search = SearchBar("Search library...")
         self.lib_search.returnPressed.connect(self.refresh_library)
-        top.addWidget(self.lib_search)
-        btn = QPushButton("Refresh")
+        top.addWidget(self.lib_search, 1)
+
+        btn = PrimaryButton("Refresh")
         btn.clicked.connect(self.refresh_library)
         top.addWidget(btn)
 
-        playall_btn = QPushButton("Play All")
-        playall_btn.setObjectName("primary")
+        playall_btn = PrimaryButton("Play All")
         playall_btn.clicked.connect(self._library_play_all)
         top.addWidget(playall_btn)
         lay.addLayout(top)
 
-        self.lib_table = QTableWidget()
-        self.lib_table.setColumnCount(11)
-        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "Like", "Dislike", "Watch Later", "Play", "Open Folder", "Delete", "Share"])
-        self.lib_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.lib_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        lay.addWidget(self.lib_table)
+        # Scrollable grid
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.lib_widget = QWidget()
+        self.lib_widget.setStyleSheet("QWidget { background: transparent; }")
+        self.lib_grid = QGridLayout(self.lib_widget)
+        self.lib_grid.setSpacing(16)
+        self.lib_grid.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(self.lib_widget)
+        lay.addWidget(scroll, 1)
 
-        back = QPushButton("← Back")
+        back = GhostButton("← Back")
         back.clicked.connect(lambda: self.set_view("browser"))
         lay.addWidget(back)
         return w
@@ -2341,50 +2355,77 @@ class YTDLPApp(QMainWindow):
     def refresh_library(self):
         q = self.lib_search.text().strip() if hasattr(self, "lib_search") else ""
         items = library_list(q)
-        self.lib_table.setColumnCount(11)
-        self.lib_table.setHorizontalHeaderLabels(["Title", "Uploader", "Resolution", "Size", "Like", "Dislike", "Watch Later", "Play", "Open Folder", "Delete", "Share"])
-        self.lib_table.setRowCount(len(items))
+
+        # Clear existing grid
+        while self.lib_grid.count():
+            child = self.lib_grid.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        cols = 5
         for i, it in enumerate(items):
-            self.lib_table.setItem(i, 0, QTableWidgetItem(it.get("title", "")))
-            self.lib_table.setItem(i, 1, QTableWidgetItem(it.get("uploader", "")))
-            self.lib_table.setItem(i, 2, QTableWidgetItem(it.get("resolution", "")))
-            fs = it.get("file_size") or 0
-            self.lib_table.setItem(i, 3, QTableWidgetItem(f"{fs/1024/1024:.1f} MB"))
-            self.lib_table.setItem(i, 4, QTableWidgetItem(it.get("filepath", "")))
+            card = MediaCard(
+                title=it.get("title", ""),
+                subtitle=it.get("uploader", ""),
+                artwork=None,
+            )
+            card.setFixedSize(200, 140)
+
+            cover_lbl = QLabel()
+            cover_lbl.setFixedSize(200, 105)
+            cover_lbl.setStyleSheet("background:#181825; border-radius:4px;")
+            cover_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if it.get("filepath") and os.path.exists(it["filepath"]):
+                # Use a generic file icon or thumbnail
+                cover_lbl.setStyleSheet("background:#181825; border-radius:4px; color:#a0a0a8; font-size:10px;")
+                cover_lbl.setText("📄")
+            card.layout().insertWidget(0, cover_lbl)
 
             # Like
-            likeb = QPushButton("Like" if it.get("is_liked") else "Like")
+            likeb = QPushButton("Liked" if it.get("is_liked") else "Like")
             likeb.setProperty("id", it.get("id"))
+            likeb.setFixedWidth(55)
+            likeb.setStyleSheet("QPushButton { border: none; font-size: 10px; } QPushButton:hover { color: #f38ba8; }")
             likeb.clicked.connect(self._lib_toggle_like)
-            self.lib_table.setCellWidget(i, 5, likeb)
+            card.add_action(likeb)
 
-            # Dislike
-            dislikeb = QPushButton("Dislike" if it.get("is_disliked") else "Dislike")
-            dislikeb.setProperty("id", it.get("id"))
-            dislikeb.clicked.connect(self._lib_toggle_dislike)
-            self.lib_table.setCellWidget(i, 6, dislikeb)
-
-            # Watch Later
-            wlb = QPushButton("Watch Later" if it.get("is_watch_later") else "Watch Later")
-            wlb.setProperty("id", it.get("id"))
-            wlb.clicked.connect(self._lib_toggle_watch_later)
-            self.lib_table.setCellWidget(i, 7, wlb)
-
+            # Play
             playb = QPushButton("Play")
             playb.setProperty("path", it.get("filepath", ""))
             playb.clicked.connect(self._lib_play)
-            self.lib_table.setCellWidget(i, 8, playb)
+            card.add_action(playb)
 
-            openb = QPushButton("Open Folder")
-            openb.setProperty("path", it.get("filepath", ""))
-            openb.clicked.connect(self._lib_open_folder)
-            self.lib_table.setCellWidget(i, 9, openb)
+            # Open Folder
+            ofb = QPushButton("Folder")
+            ofb.setProperty("path", it.get("filepath", ""))
+            ofb.setFixedWidth(55)
+            ofb.clicked.connect(self._lib_open_folder)
+            card.add_action(ofb)
 
-            shareb = QPushButton("Share")
-            shareb.setProperty("url", it.get("source_url", ""))
-            shareb.setToolTip("Copy URL to clipboard")
-            shareb.clicked.connect(self._lib_share)
-            self.lib_table.setCellWidget(i, 10, shareb)
+            # Delete
+            delb = QPushButton("Delete")
+            delb.setProperty("id", it.get("id"))
+            delb.setFixedWidth(55)
+            delb.setStyleSheet("QPushButton { border: none; font-size: 10px; } QPushButton:hover { color: #ef4444; }")
+            delb.clicked.connect(self._lib_del)
+            card.add_action(delb)
+
+            card.clicked.connect(
+                lambda checked, p=it.get("filepath", ""): self._lib_play_from_card(p)
+            )
+
+            row = i // cols
+            col = i % cols
+            self.lib_grid.addWidget(card, row, col)
+
+        self.lib_grid.setColumnStretch(cols, 1)
+        self.lib_grid.setRowStretch(len(items) // cols + 1, 1)
+
+    def _lib_play_from_card(self, path: str):
+        if path and os.path.exists(path):
+            self._player_load(path)
+        else:
+            QMessageBox.warning(self, "Playback", "File not found: " + str(path))
 
     def _lib_play(self):
         btn = self.sender()
