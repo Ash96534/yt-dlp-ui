@@ -124,7 +124,9 @@ class PlayerBar(QFrame):
         row1.addWidget(self.btn_skip_fwd)
 
         self.speed = QComboBox()
-        self.speed.addItems(["0.5x", "1x", "1.5x", "2x"])
+        self.speed.addItems(
+            ["0.25x", "0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x", "3x", "4x"]
+        )
         self.speed.setCurrentText("1x")
         self.speed.setFixedWidth(60)
         row1.addWidget(self.speed)

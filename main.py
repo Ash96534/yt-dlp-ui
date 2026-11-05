@@ -23,6 +23,9 @@ import uuid
 import time
 import threading
 import sqlite3
+import hashlib
+import subprocess
+import shutil
 from typing import Any, Dict, List, Optional
 
 import yt_dlp
@@ -272,7 +275,7 @@ def init_db():
     # Migration for existing DBs
     for col in ("is_watch_later", "is_liked", "is_disliked", "play_count", "last_played",
                 "is_music", "music_artist", "music_album", "music_track", "music_genre",
-                "music_year", "music_cover", "music_duration"):
+                "music_year", "music_cover", "music_duration", "file_hash"):
         try:
             c.execute(f"ALTER TABLE library ADD COLUMN {col} TEXT DEFAULT ''")
         except sqlite3.OperationalError:
@@ -281,17 +284,49 @@ def init_db():
     c.close()
 
 
+def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> Optional[str]:
+    """Compute SHA-256 of a file, or None if unreadable/missing."""
+    if not path or not os.path.exists(path):
+        return None
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                h.update(data)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
 def library_add(job_id: str, source_url: str, title: str, uploader: str,
                 duration: int, filepath: str, file_size: int,
                 resolution: str, container: str):
-    """Insert a new row into the library table after a download completes."""
+    """Insert a new row into the library table; returns row id.
+
+    Skips the insert (returns None) if an identical file (same SHA-256) already
+    exists in the library, providing duplicate detection.
+    """
+    file_hash = sha256_file(filepath)
     c = sqlite3.connect(LIBRARY_DB)
-    c.execute(
-        "INSERT INTO library (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container) VALUES (?,?,?,?,?,?,?,?,?)",
-        (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container),
+    if file_hash:
+        dup = c.execute(
+            "SELECT id FROM library WHERE file_hash = ? LIMIT 1",
+            (file_hash,),
+        ).fetchone()
+        if dup:
+            c.close()
+            return None
+    cur = c.execute(
+        "INSERT INTO library (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container, file_hash) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container, file_hash),
     )
     c.commit()
+    new_id = cur.lastrowid
     c.close()
+    return new_id
 
 
 def library_list(query: str = "") -> List[Dict]:
@@ -680,6 +715,7 @@ class YTDLPApp(QMainWindow):
         self.player_panel._on_gapless = self._toggle_gapless
         self.player_panel._on_recent = self._show_recently_played
         self.player_panel._on_mini = self._open_mini_player
+        self.player.mediaStatusChanged.connect(self._player_media_status_changed)
 
         # Load saved output device selection
         self.selected_output_device_ids = self.config.get(
@@ -696,8 +732,12 @@ class YTDLPApp(QMainWindow):
 
     def _player_media_status_changed(self, status):
         from PyQt6.QtMultimedia import QMediaPlayer
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self._playlist_next()
+        if status != QMediaPlayer.MediaStatus.EndOfMedia:
+            return
+        autoplay_checked = getattr(getattr(self, "player_panel", None), "autoplay", None)
+        if autoplay_checked is not None and not autoplay_checked.isChecked():
+            return
+        self._playlist_next()
 
     def _toggle_repeat(self):
         modes = ["all", "one", "none"]
@@ -796,6 +836,25 @@ class YTDLPApp(QMainWindow):
             self.playlist_index = len(self.playlist) - 1
         self._player_load(self.playlist[self.playlist_index])
 
+    def _fade_in_volume(self, target: float = 0.75, duration_ms: int = 1200):
+        """Fade the player volume from 0 to target over duration_ms (crossfade)."""
+        steps = 20
+        interval = max(1, duration_ms // steps)
+        state = {"step": 0}
+        self.player.set_volume(0.0)
+        timer = QTimer(self)
+
+        def _advance():
+            state["step"] += 1
+            self.player.set_volume(target * state["step"] / steps)
+            if state["step"] >= steps:
+                self.player.set_volume(target)
+                timer.stop()
+                timer.deleteLater()
+
+        timer.timeout.connect(_advance)
+        timer.start(interval)
+
     def _player_load(self, filepath):
         """Load a media file into the player and begin playback."""
         if not filepath or not os.path.exists(filepath):
@@ -808,6 +867,9 @@ class YTDLPApp(QMainWindow):
         c.close()
         self.player.set_source(filepath)
         self.player.play()
+        if self.crossfade_enabled:
+            target = (self.player_panel.vol_slider.value() / 100.0) if self.player_panel else 0.75
+            self._fade_in_volume(target)
         self.player_panel.show()
         self.player_file_lbl.setText(os.path.basename(filepath))
         self.show_toast("Playing", os.path.basename(filepath))
@@ -1618,7 +1680,18 @@ class YTDLPApp(QMainWindow):
         rl.addWidget(self.music_status)
 
         # Your library
-        rl.addWidget(QLabel("Your Library"))
+        lib_header = QHBoxLayout()
+        lib_header.addWidget(QLabel("Your Library"))
+        lib_header.addStretch()
+        self.music_lib_search = SearchBar("Filter library...")
+        self.music_lib_search.setFixedWidth(200)
+        self.music_lib_search.returnPressed.connect(self.refresh_music_library)
+        lib_header.addWidget(self.music_lib_search)
+        self.btn_music_gallery = GhostButton("Gallery")
+        self.btn_music_gallery.setCheckable(True)
+        self.btn_music_gallery.clicked.connect(self._toggle_music_gallery)
+        lib_header.addWidget(self.btn_music_gallery)
+        rl.addLayout(lib_header)
         self.music_lib_scroll = QScrollArea()
         self.music_lib_scroll.setWidgetResizable(True)
         self.music_lib_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
@@ -1862,12 +1935,16 @@ class YTDLPApp(QMainWindow):
         self.music_filter_wl.setChecked(filter_type == "watch_later")
         self.refresh_music_library()
 
+    def _toggle_music_gallery(self):
+        self.music_gallery = not getattr(self, "music_gallery", False)
+        self.btn_music_gallery.setChecked(self.music_gallery)
+        self.refresh_music_library()
+
     def do_music_search(self):
         q = self.music_search.text().strip()
         if not q:
             return
         self.music_status.setText("Searching...")
-        self.music_results.setRowCount(0)
         self.msw = SearchWorker(q + " music", max_results=20)
         self.msw.finished.connect(self._music_search_done)
         self.msw.failed.connect(lambda e: self.music_status.setText(f"Error: {e}"))
@@ -1998,34 +2075,38 @@ class YTDLPApp(QMainWindow):
             if child.widget():
                 child.widget().deleteLater()
 
+        gallery = getattr(self, "music_gallery", False)
+        cols = 3 if gallery else 6
+        card_size = (230, 260) if gallery else (170, 130)
+        cover_size = (230, 168) if gallery else (170, 95)
+
         if not rows:
             lbl = QLabel("Your music library is empty.<br>Download MP3s to see them here.")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet("color:#a0a0a8; font-size:14px; padding:40px;")
-            self.music_lib_grid.addWidget(lbl, 0, 0, 1, 6)
+            self.music_lib_grid.addWidget(lbl, 0, 0, 1, cols)
             return
 
-        cols = 6
         for i, it in enumerate(rows):
             card = MediaCard(
                 title=it["title"] or "",
                 subtitle=it["music_artist"] or "",
                 artwork=None,
             )
-            card.setFixedSize(170, 130)
+            card.setFixedSize(*card_size)
 
             cover_lbl = QLabel()
-            cover_lbl.setFixedSize(170, 95)
+            cover_lbl.setFixedSize(*cover_size)
             cover_lbl.setStyleSheet("background:#181825; border-radius:4px;")
             cover_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             if it["music_cover"]:
                 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
                 from PyQt6.QtGui import QPixmap
                 nam = QNetworkAccessManager()
-                def _on_thumb(resp, lbl=cover_lbl, cover=it["music_cover"]):
+                def _on_thumb(resp, lbl=cover_lbl, cover=it["music_cover"], size=cover_size):
                     pix = QPixmap()
                     pix.loadFromData(resp.readAll())
-                    lbl.setPixmap(pix.scaled(170, 95, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    lbl.setPixmap(pix.scaled(size[0], size[1], Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                              Qt.TransformationMode.SmoothTransformation))
                 nam.finished.connect(_on_thumb)
                 nam.get(QNetworkRequest(QUrl(it["music_cover"])))
@@ -2567,7 +2648,15 @@ class YTDLPApp(QMainWindow):
         playall_btn = PrimaryButton("Play All")
         playall_btn.clicked.connect(self._library_play_all)
         top.addWidget(playall_btn)
+
+        self.btn_import = GhostButton("Import Folder")
+        self.btn_import.clicked.connect(self._import_folder)
+        top.addWidget(self.btn_import)
         lay.addLayout(top)
+
+        self.import_status = QLabel("")
+        self.import_status.setStyleSheet("color:#a0a0a8; font-size:12px;")
+        lay.addWidget(self.import_status)
 
         # Scrollable grid
         scroll = QScrollArea()
@@ -2651,6 +2740,13 @@ class YTDLPApp(QMainWindow):
             delb.clicked.connect(self._lib_del)
             card.add_action(delb)
 
+            # Edit tags
+            tagb = QPushButton("Tags")
+            tagb.setProperty("id", it.get("id"))
+            tagb.setFixedWidth(55)
+            tagb.clicked.connect(self._lib_edit_tags)
+            card.add_action(tagb)
+
             card.clicked.connect(
                 lambda checked, p=it.get("filepath", ""): self._lib_play_from_card(p)
             )
@@ -2700,6 +2796,13 @@ class YTDLPApp(QMainWindow):
         library_delete(item_id, delete_file=False)
         self.refresh_library()
 
+    def _lib_edit_tags(self):
+        btn = self.sender()
+        item_id = btn.property("id")
+        dlg = TagEditorDialog(item_id, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.refresh_library()
+
     def _lib_toggle_bool(self, col):
         btn = self.sender()
         item_id = btn.property("id")
@@ -2736,6 +2839,23 @@ class YTDLPApp(QMainWindow):
         self.playlist = paths
         self.playlist_index = 0
         self._player_load(paths[0])
+
+    def _import_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select folder to import")
+        if not folder:
+            return
+        self.btn_import.setEnabled(False)
+        self.import_status.setText("Importing media files…")
+        self._import_worker = ImportWorker(folder)
+        self._import_worker.finished.connect(self._import_done)
+        self._import_worker.message.connect(self.import_status.setText)
+        self._import_worker.start()
+
+    def _import_done(self, imported: int, skipped: int):
+        self.btn_import.setEnabled(True)
+        self.import_status.setText(f"Imported {imported} file(s); skipped {skipped} duplicate(s).")
+        self.refresh_library()
+        self.show_toast("Import complete", f"Added {imported} item(s); skipped {skipped} duplicate(s).")
 
     # ----- settings page -----
     def _page_settings(self):
@@ -3986,6 +4106,216 @@ class SearchWorker(QThread):
             self.finished.emit(results)
         except Exception as e:
             self.failed.emit(str(e))
+
+
+def _probe_duration(filepath: str) -> int:
+    """Probe media duration in seconds using ffprobe (ffmpeg or system ffmpeg)."""
+    ffprobe = None
+    bundled = os.path.join(BASE_DIR, "ffmpeg", "bin", "ffprobe.exe") if os.name == "nt" else os.path.join(BASE_DIR, "ffmpeg", "bin", "ffprobe")
+    if os.path.exists(bundled):
+        ffprobe = bundled
+    else:
+        ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        # Try ffmpeg -i fallback name
+        bundled_ffmpeg = os.path.join(BASE_DIR, "ffmpeg", "bin", "ffmpeg.exe") if os.name == "nt" else os.path.join(BASE_DIR, "ffmpeg", "bin", "ffmpeg")
+        if os.path.exists(bundled_ffmpeg):
+            ffprobe = None  # ffmpeg -i still reports duration via stderr, but keep simple
+    if not ffprobe:
+        return 0
+    try:
+        out = subprocess.check_output(
+            [ffprobe, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filepath],
+            timeout=15,
+        )
+        data = json.loads(out)
+        dur = float(data.get("format", {}).get("duration", 0) or 0)
+        if dur <= 0:
+            for stream in data.get("streams", []):
+                dur = float(stream.get("duration", 0) or 0)
+                if dur > 0:
+                    break
+        return max(1, int(round(dur))) if dur > 0 else 0
+    except Exception:
+        return 0
+
+
+# --------------------------------------------------------------------------- #
+# Import Worker
+# --------------------------------------------------------------------------- #
+class ImportWorker(QThread):
+    """Scan a folder for media files and import them into the library DB.
+
+    Skips files that already exist in the library (by filepath or SHA-256).
+
+    Signals:
+        message(str) - human-readable progress/status messages
+        finished(int, int) - (imported count, skipped duplicate count)
+    """
+
+    message = pyqtSignal(str)
+    finished = pyqtSignal(int, int)
+
+    SUPPORTED_EXT = (
+        ".mp4", ".mkv", ".webm", ".avi", ".mov",
+        ".mp3", ".m4a", ".opus", ".flac", ".wav",
+    )
+
+    def __init__(self, folder: str) -> None:
+        super().__init__()
+        self.folder = folder
+
+    def run(self):
+        imported = 0
+        skipped = 0
+        for root, _, files in os.walk(self.folder):
+            for name in files:
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in self.SUPPORTED_EXT:
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    if not os.path.isfile(path):
+                        continue
+                    file_hash = sha256_file(path)
+                    c = sqlite3.connect(LIBRARY_DB)
+                    if c.execute("SELECT 1 FROM library WHERE filepath = ? LIMIT 1", (path,)).fetchone():
+                        c.close()
+                        skipped += 1
+                        continue
+                    if file_hash and c.execute(
+                        "SELECT 1 FROM library WHERE file_hash = ? LIMIT 1", (file_hash,)
+                    ).fetchone():
+                        c.close()
+                        skipped += 1
+                        continue
+                    duration = _probe_duration(path)
+                    c.execute(
+                        "INSERT INTO library (job_id, source_url, title, uploader, duration, filepath, file_size, resolution, container, file_hash) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            "import",
+                            f"imported://{root}",
+                            os.path.splitext(name)[0],
+                            "Unknown",
+                            duration,
+                            path,
+                            os.path.getsize(path),
+                            "",
+                            ext.lstrip("."),
+                            file_hash,
+                        ),
+                    )
+                    c.commit()
+                    c.close()
+                    imported += 1
+                except Exception as e:  # noqa: BLE001 - one bad file should not abort the import
+                    self.message.emit(f"Skipped {name}: {e}")
+        self.finished.emit(imported, skipped)
+
+
+def _embed_metadata_in_file(filepath: str, title: str = "", artist: str = "",
+                            album: str = "", genre: str = "", year: str = "") -> tuple[bool, str]:
+    """Embed metadata into an audio file using ffmpeg -c copy.
+
+    Returns (ok, message). On failure the original file is left untouched.
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+    audio_exts = {".mp3", ".m4a", ".opus", ".flac", ".wav", ".m4b"}
+    if ext not in audio_exts:
+        return False, "Only audio files can embed tags in-place."
+    ffmpeg = FFMPEG_PATH if os.path.exists(FFMPEG_PATH) else shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False, "ffmpeg not found (set the path in Settings or install FFmpeg)."
+    tmp = filepath + ".embed" + ext
+    cmd = [
+        ffmpeg, "-y", "-i", filepath,
+        "-c", "copy",
+        "-metadata", f"title={title}",
+        "-metadata", f"artist={artist}",
+        "-metadata", f"album={album}",
+        "-metadata", f"genre={genre}",
+        "-metadata", f"date={year}",
+        tmp,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+    except Exception as e:
+        return False, f"ffmpeg failed: {e}"
+    if result.returncode != 0:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        err = (result.stderr or b"").decode("utf-8", errors="replace")
+        return False, err or f"ffmpeg exited with code {result.returncode}"
+    try:
+        os.replace(tmp, filepath)
+    except OSError as e:
+        return False, f"Could not replace original file: {e}"
+    return True, "ok"
+
+
+class TagEditorDialog(QDialog):
+    """Edit library title and music tags for a single item (SQLite + optional embed)."""
+
+    def __init__(self, item_id: int, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.item_id = int(item_id)
+        c = sqlite3.connect(LIBRARY_DB)
+        c.row_factory = sqlite3.Row
+        row = c.execute("SELECT * FROM library WHERE id = ?", (self.item_id,)).fetchone()
+        c.close()
+        self.item = dict(row) if row else {}
+        self.setWindowTitle("Edit Tags")
+        self.resize(460, 380)
+
+        form = QFormLayout(self)
+        self.f_title = QLineEdit(self.item.get("title", "") or "")
+        self.f_uploader = QLineEdit(self.item.get("uploader", "") or "")
+        self.f_artist = QLineEdit(self.item.get("music_artist", "") or self.item.get("uploader", "") or "")
+        self.f_album = QLineEdit(self.item.get("music_album", "") or "")
+        self.f_track = QLineEdit(str(self.item.get("music_track", "") or ""))
+        self.f_genre = QLineEdit(self.item.get("music_genre", "") or "")
+        self.f_year = QLineEdit(self.item.get("music_year", "") or "")
+        form.addRow("Title", self.f_title)
+        form.addRow("Uploader", self.f_uploader)
+        form.addRow("Artist", self.f_artist)
+        form.addRow("Album", self.f_album)
+        form.addRow("Track #", self.f_track)
+        form.addRow("Genre", self.f_genre)
+        form.addRow("Year", self.f_year)
+        self.embed_cb = QCheckBox("Embed tags into audio file (mp3/m4a/opus/flac)")
+        self.embed_cb.setEnabled(
+            os.path.splitext(self.item.get("filepath", "") or "")[1].lower()
+            in (".mp3", ".m4a", ".opus", ".flac", ".wav", ".m4b")
+        )
+        form.addRow(self.embed_cb)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.save)
+        btns.rejected.connect(self.reject)
+        form.addRow(btns)
+
+    def save(self):
+        title = self.f_title.text().strip()
+        uploader = self.f_uploader.text().strip()
+        artist = self.f_artist.text().strip()
+        album = self.f_album.text().strip()
+        track = self.f_track.text().strip()
+        genre = self.f_genre.text().strip()
+        year = self.f_year.text().strip()
+        c = sqlite3.connect(LIBRARY_DB)
+        c.execute(
+            "UPDATE library SET title=?, uploader=?, music_artist=?, music_album=?, music_track=?, music_genre=?, music_year=? WHERE id=?",
+            (title, uploader, artist, album, track, genre, year, self.item_id),
+        )
+        c.commit()
+        c.close()
+        if self.embed_cb.isChecked():
+            path = self.item.get("filepath", "") or ""
+            ok, msg = _embed_metadata_in_file(path, title, artist, album, genre, year)
+            if not ok:
+                QMessageBox.warning(self, "Embed failed", f"SQLite was updated, but embedding failed:\n\n{msg}")
+        self.accept()
 
 
 # --------------------------------------------------------------------------- #

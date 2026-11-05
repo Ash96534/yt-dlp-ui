@@ -1,6 +1,23 @@
 # Release Notes
 
-## v1.1 (In Development) — Core Stability
+## v1.2 (In Development) — Player & Library Polish
+
+### Added
+- **Import Folder** in Library — scan local media files into the SQLite library with SHA-256 duplicate detection
+- **Cover art gallery** mode in Music Library (toggle: Gallery button) with a filter search box for the library
+- **Full playback speed range** — 0.25x to 4.0x
+- **Crossfade fade-in** on track change when the Player Bar's Crossfade toggle is enabled
+- **Gapless auto-advance** on track end when Player Bar's Autoplay (or Crossfade/Gapless) is enabled
+- **Edit Tags** button on library items — title, artist, album, track #, genre, year; optional embedding into audio files via FFmpeg
+- **Library integrity** — `file_hash` (SHA-256) stored in SQLite; duplicates skipped on download and import
+
+### Improved
+- Player Bar speed selector now includes 0.25x/0.75x/1.25x/3x/4x
+- Music search no longer referenced at runtime crashes; end-of-track advance wired
+
+---
+
+## v1.1 — Core Stability (In Development)
 
 ### Added
 - Resume interrupted downloads on restart — download jobs are persisted to `data/jobs.json`; queued/running jobs are automatically requeued on launch
