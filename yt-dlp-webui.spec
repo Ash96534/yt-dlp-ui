@@ -1,13 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+import os
+
 block_cipher = None
+
+# Determine ffmpeg binary names based on platform
+if sys.platform == 'win32':
+    ffmpeg_bin = 'ffmpeg/bin/ffmpeg.exe'
+    ffprobe_bin = 'ffmpeg/bin/ffprobe.exe'
+else:
+    ffmpeg_bin = 'ffmpeg/bin/ffmpeg'
+    ffprobe_bin = 'ffmpeg/bin/ffprobe'
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[
-        ('ffmpeg/bin/ffmpeg.exe', 'ffmpeg/bin'),
-        ('ffmpeg/bin/ffprobe.exe', 'ffmpeg/bin'),
+        (ffmpeg_bin, 'ffmpeg/bin'),
+        (ffprobe_bin, 'ffmpeg/bin'),
     ],
     datas=[
         ('config/config.default.json', 'config'),
