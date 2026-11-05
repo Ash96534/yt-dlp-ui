@@ -1,0 +1,73 @@
+{
+  "app": {
+    "theme": "dark",
+    "language": "en",
+    "check_updates_on_start": false,
+    "minimize_to_tray": false
+  },
+  "downloads": {
+    "default_path": "{user_home}/Downloads/YTDLP-WebUI",
+    "path_templates": {
+      "video": "{download_root}/{uploader}/{title}.{ext}",
+      "audio": "{download_root}/Music/{uploader}/{title}.{ext}",
+      "playlist": "{download_root}/Playlists/{playlist_title}/{playlist_index:02d} - {title}.{ext}"
+    },
+    "concurrent_downloads": 3,
+    "max_retries": 5,
+    "retry_sleep": 10,
+    "fragment_retries": 10,
+    "speed_limit": null,
+    "throttled_rate": null
+  },
+  "format": {
+    "preferred": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "resolution_cap": 1080,
+    "container": "mp4",
+    "audio_only": false,
+    "audio_format": "mp3",
+    "audio_quality": "0",
+    "embed_subs": false,
+    "subs_lang": ["en"],
+    "embed_thumbnail": true,
+    "embed_metadata": true,
+    "write_thumbnail": false,
+    "write_info_json": false,
+    "write_description": false,
+    "write_comments": false,
+    "write_subs": false,
+    "write_auto_subs": false,
+    "merge_output_format": "mp4",
+    "noplaylist": true,
+    "ignore_errors": false,
+    "no_warnings": false,
+    "geo_bypass": true,
+    "geo_bypass_country": null
+  },
+  "auth": {
+    "cookies_from_browser": null,
+    "cookies_file": null,
+    "username": null,
+    "password": null
+  },
+  "network": {
+    "proxy": null,
+    "socket_timeout": 30,
+    "source_address": null,
+    "force_ipv4": false,
+    "force_ipv6": false,
+    "user_agent": null,
+    "referer": null
+  },
+  "postprocessing": {
+    "ffmpeg_location": "",
+    "prefer_ffmpeg": true,
+    "keep_video": false,
+    "fixup": "detect_or_warn"
+  },
+  "extractor": {
+    "age_limit": null,
+    "default_search": "auto",
+    "extractor_retries": 3,
+    "force_generic_extractor": false
+  }
+}
