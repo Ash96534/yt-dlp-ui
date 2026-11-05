@@ -1,6 +1,6 @@
-"""HTTP JSON-RPC backend for the yt-dlp-webui Electron app.
+"""HTTP JSON-RPC backend for yt-dlp-webui.
 
-Spawned by electron-main.py. Listens on 127.0.0.1:<random port>, prints
+Standalone Python service. Listens on 127.0.0.1:<random port>, prints
 "PORT:<port>" to stdout once ready, then serves /rpc POST endpoints.
 """
 from __future__ import annotations

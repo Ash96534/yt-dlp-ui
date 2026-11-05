@@ -23,11 +23,8 @@ A single-window application that lets a user:
 
 ```
 +-----------------------------------------------------------------------+
-|                         UI LAYER (Electron / web tech)                |
+|                         UI LAYER (PyQt6)                              |
 |  [Browser] [Search] [Video Detail] [Queue] [Library] [Settings]       |
-+-----------------------------------------------------------------------+
-|                         IPC BRIDGE                                    |
-|  (electron main <-> renderer, or Python backend <-> frontend)         |
 +-----------------------------------------------------------------------+
 |                    APPLICATION LAYER (Python + yt-dlp)                |
 |  - YouTube extractor wrapper (yt-dlp extractor, no API key needed)    |
@@ -53,14 +50,14 @@ A single-window application that lets a user:
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| UI | Electron (React/Vue or plain HTML+JS) or PyQt/PySide | Electron = modern UI, easy distribution; PyQt = pure Python, lighter. Recommend **Electron** for a polished browser feel. |
+| UI | PyQt6 (Qt Widgets + QWebEngineView Chromium) | Pure Python, native desktop UI, no Node/Electron bloat. Single-file `main.py`. |
 | Backend | Python 3.10+ | `yt-dlp` is Python-native; rich ecosystem. |
 | yt-dlp integration | `yt_dlp` Python library (in-process) | Direct API access, progress hooks, postprocessors |
 | FFmpeg | System binary (bundled or user-installed) | Required for merge, convert, thumbnail embed, metadata, audio extraction |
 | Config | JSON + optional env vars / CLI flags | Simple, human-editable, portable |
 | Local DB | SQLite | Zero-config, file-based, stores library index + job history |
-| IPC | Electron `ipcMain`/`ipcRenderer` (or stdio JSON-RPC if PyQt) | Decouples UI from Python worker |
-| Packaging | `electron-builder` + PyInstaller / `py2exe` for the Python side | Single executable for Windows/macOS/Linux |
+| IPC | Direct in-process Python calls (`main.py` ↔ `backend/` modules) | No Electron IPC needed; UI and backend share the same process. |
+| Packaging | PyInstaller (`*.spec`) | Single executable for Windows/macOS/Linux. |
 
 ---
 
@@ -68,37 +65,38 @@ A single-window application that lets a user:
 
 ```
 yt-dlp-webui/
+├── main.py                 # PyQt6 application entry point (~3,600 lines, single file)
+├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Python packaging metadata
 ├── README.md
-├── PROJECT_PLAN.md
-├── package.json                  # Electron app manifest
-├── electron-main.js              # Electron main process
-├── preload.js                    # ContextBridge IPC exposure
-├── src/
-│   ├── renderer/                 # UI source (HTML/JS/CSS or React/Vue)
-│   │   ├── index.html
-│   │   ├── browser/              # YouTube browsing views
-│   │   ├── video-detail/         # Video info + download config panel
-│   │   ├── queue/                # Download queue view
-│   │   ├── library/              # Downloaded media library
-│   │   ├── settings/             # Global settings view
-│   │   └── components/           # Shared UI components
-│   └── styles/                   # CSS / Tailwind
-├── backend/                      # Python service
-│   ├── app.py                    # Entry point (stdio or socket server)
-│   ├── config.py                 # Config load/save/validate
-│   ├── extractor.py              # YouTube info extraction via yt_dlp
-│   ├── downloader.py             # yt-dlp Python API wrapper + progress hooks
-│   ├── queue.py                  # In-memory + persisted job queue
-│   ├── library.py                # SQLite library index
-│   ├── postprocess.py            # FFmpeg post-processing helpers
-│   └── requirements.txt          # yt-dlp, aiohttp, etc.
+├── PROJECT_PLAN.md         # Original project plan
+├── UI_OVERHAUL_PLAN.md     # UI redesign documentation
 ├── config/
-│   └── config.default.json       # Shipped defaults
-├── data/                         # (runtime) config.json, library.db, logs
-├── downloads/                    # (runtime) default download root
-├── ffmpeg/                       # (optional) bundled ffmpeg binaries
-├── tests/
-└── dist/                         # build output
+│   └── config.default.json # Default application settings
+├── backend/                # Pure Python service modules (config, extractor, downloader, library, job_queue)
+│   ├── app.py              # JSON-RPC backend entry point (standalone)
+│   ├── config.py
+│   ├── extractor.py
+│   ├── downloader.py
+│   ├── library.py
+│   └── job_queue.py
+├── ui/                     # PyQt6 UI component package
+│   ├── __init__.py
+│   ├── theme.py            # Dark/light/system/night theme engine
+│   ├── nav_rail.py         # Collapsible navigation sidebar
+│   ├── player_bar.py       # Always-visible media player bar
+│   ├── audio_devices.py    # Multi-output audio manager
+│   └── widgets.py          # Reusable widgets (MediaCard, buttons, etc.)
+├── crosspost/              # Social cross-posting (reddit, twitter, devto)
+├── ffmpeg/                 # FFmpeg binaries (Windows)
+│   └── bin/
+├── data/                   # Created at runtime (config.json, library.db)
+├── build-linux.sh          # PyInstaller + AppImage build
+├── build-windows.ps1       # PyInstaller + NSIS build
+├── yt-dlp-webui.spec       # PyInstaller spec
+├── YT-DLP WebUI.spec       # PyInstaller spec (collected)
+├── file_version_info.txt
+└── dist/                   # Build output (runtime)
 ```
 
 ---
@@ -296,7 +294,7 @@ Features:
 
 ## 7. Internal API (IPC Contract)
 
-Renderer → Main/Backend (examples):
+UI (`main.py`) → backend modules (`backend/`):
 
 | Channel | Payload | Response |
 |---------|---------|----------|
@@ -313,7 +311,7 @@ Renderer → Main/Backend (examples):
 | `library:action` | `{file_id, action: play|locate|delete|redownload|favorite}` | `{ok}` |
 | `app:open_folder` | `{path}` | `{ok}` |
 
-Backend → Renderer (events):
+Backend → UI (events, emitted via `DownloadManager.on_event`):
 - `download:progress` `{job_id, pct, speed, eta, downloaded, total}`
 - `download:status` `{job_id, status}`
 - `download:completed` `{job_id, filepath}`
@@ -399,12 +397,12 @@ CREATE INDEX idx_jobs_status ON download_jobs(status);
 
 | Phase | Goal | Key Deliverables |
 |-------|------|------------------|
-| **P1 — Foundation** | Repo setup, Electron shell, Python backend bridge, config system | `package.json`, `electron-main.js`, `backend/app.py`, `config.py`, defaults JSON, first build |
+| **P1 — Foundation** | Repo setup, PyQt6 shell, Python backend modules, config system | `main.py`, `backend/`, `ui/`, `config/`, `config.default.json`, requirements.txt, first build |
 | **P2 — Extraction** | YouTube search + video info | `extractor.py`, search view, video detail view, format table |
 | **P3 — Download Engine** | yt-dlp integration, queue, progress | `downloader.py`, `queue.py`, queue view, pause/resume/cancel |
 | **P4 — Configuration UI** | Global + per-download settings | Settings view, config drawer on video detail, defaults merge logic |
 | **P5 — Library** | SQLite index, file management | `library.py`, library view, open-locate-delete-redownload |
-| **P6 — Polish** | Theming, notifications, tray, updater, packaging | `electron-builder` config, ffmpeg bundling, auto-update, installer |
+| **P6 — Polish** | Theming, notifications, tray, updater, packaging | PyInstaller spec, ffmpeg bundling, auto-update, NSIS/AppImage/DMG installer |
 
 ---
 
@@ -416,7 +414,7 @@ CREATE INDEX idx_jobs_status ON download_jobs(status);
 | ffmpeg not installed | Ship ffmpeg binaries per platform in `ffmpeg/`; validate `ffmpeg_location` on startup; show setup wizard if missing |
 | Large playlists freeze UI | `extract_flat` for listing, lazy-load pages, cap default playlist extract count with user override |
 | Copyright / ToS concerns | Include disclaimer: tool for personal use / content you own or have rights to; respect YouTube ToS |
-| Electron + Python IPC complexity | Use stdio JSON-RPC or a local WebSocket; keep message schema versioned |
+| UI freezing during large downloads | Offload downloads to `QThread` workers; keep UI thread responsive |
 | Windows path length / Unicode | Normalize filenames via `yt-dlp` `restrictfilenames` option; use `os.path` carefully |
 
 ---
@@ -433,22 +431,22 @@ CREATE INDEX idx_jobs_status ON download_jobs(status);
 
 ## 13. Build & Distribution
 
-- `electron-builder` with NSIS (Windows), DMG (macOS), AppImage/DEB (Linux)
-- Python backend packaged with PyInstaller into a single directory alongside Electron
-- Auto-update via `electron-updater` (GitHub releases)
+- PyInstaller (`*.spec`) with NSIS (Windows), DMG (macOS), AppImage/DEB (Linux)
+- Single-file Python app packaged into a standalone executable per platform
+- Auto-update via GitHub releases
 - Code signing (optional, for Windows SmartTrust / macOS Gatekeeper)
 
 ---
 
 ## 14. Immediate Next Steps
 
-1. Initialize `package.json` and install Electron + dev deps
-2. Write `backend/requirements.txt` (`yt-dlp>=2024.x`) and `config.py`
-3. Implement `electron-main.js` → spawn Python backend → JSON-RPC over stdio
+1. Verify `main.py`, `backend/`, and `ui/` import cleanly; run `python main.py`
+2. Confirm `requirements.txt` and `pyproject.toml` dependency versions resolve
+3. Test PyInstaller build with `yt-dlp-webui.spec` on target platform
 4. Build the search + video detail UI and connect to `extractor.py`
 5. Wire up the download queue and a test download
 
 Would you like me to:
-- **Generate starter code** for any of these modules (e.g., the Python backend `config.py` + `downloader.py`, or the Electron main process)?
-- **Choose between Electron and PyQt** for the UI, or go with a pure Python desktop stack?
+- **Generate starter code** for any of these modules (e.g., the Python backend `config.py` + `downloader.py`, or PyQt6 UI widgets)?
+- **Choose between PyQt6 and another Python GUI toolkit** for the UI?
 - **Add OAuth/login** for age-restricted or private content (requires cookies from browser / YouTube Data API)?
