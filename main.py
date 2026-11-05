@@ -28,6 +28,10 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineS
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
+from ui.nav_rail import NavRail
+from ui.player_bar import PlayerBar
+from ui.theme import ThemeManager
+
 
 # --------------------------------------------------------------------------- #
 # Paths
@@ -403,13 +407,15 @@ class YTDLPApp(QMainWindow):
         self.playlist_index: int = -1
         self.crossfade_enabled: bool = False
         self.gapless_enabled: bool = False
+        self.theme = ThemeManager(self)
+        self.theme.set_theme(self.config.get("app", {}).get("theme", "dark"))
+        self._init_player()
         self._build_ui()
         init_db()
         self.refresh_jobs()
         self.refresh_library()
         self.refresh_music_library()
         self._setup_tray()
-        self._init_player()
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self)
@@ -922,26 +928,13 @@ class YTDLPApp(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Top: sidebar + content stack
+        # Top: navigation rail + content stack
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(0)
 
-        # Sidebar
-        sidebar = QFrame()
-        sidebar.setFixedWidth(200)
-        sidebar.setStyleSheet("background:#1e1e2e; border-right:1px solid #313244;")
-        sb = QVBoxLayout(sidebar)
-        sb.setContentsMargins(12, 16, 12, 16)
-        sb.setSpacing(8)
-
-        title = QLabel("YT-DLP<br/><span style='color:#89b4fa;font-size:11px'>WebUI</span>")
-        title.setStyleSheet("color:#cdd6f4; font-size:18px; font-weight:bold;")
-        title.setTextFormat(Qt.TextFormat.RichText)
-        sb.addWidget(title)
-        sb.addSpacing(16)
-
-        self.nav_buttons = {}
+        # Navigation rail
+        self.nav_rail = NavRail(self.theme, self)
         nav_items = [
             ("browser", "Browser", "Browser"),
             ("search", "Search", "Search"),
@@ -954,21 +947,9 @@ class YTDLPApp(QMainWindow):
             ("settings", "Settings", "Settings"),
         ]
         for key, label, icon in nav_items:
-            btn = QPushButton(f"{icon}  {label}")
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setCheckable(True)
-            btn.setStyleSheet(
-                "QPushButton { text-align:left; padding:8px 12px; border:none; "
-                "border-radius:6px; color:#a6adc8; font-size:13px; }"
-                "QPushButton:checked { background:#45475a; color:#cdd6f4; }"
-                "QPushButton:hover:!checked { background:#313244; color:#cdd6f4; }"
-            )
-            btn.clicked.connect(lambda checked, k=key: self.set_view(k))
-            self.nav_buttons[key] = btn
-            sb.addWidget(btn)
-        sb.addStretch()
-
-        top.addWidget(sidebar)
+            self.nav_rail.add_item(key, label, icon, lambda k=key: self.set_view(k))
+        self.nav_rail.set_active("browser")
+        top.addWidget(self.nav_rail)
 
         # Content stack
         self.stack = QStackedWidget()
@@ -991,173 +972,20 @@ class YTDLPApp(QMainWindow):
 
         root.addLayout(top, 1)
 
-        # Bottom: player panel
-        self.player_panel = QFrame()
-        self.player_panel.setFixedHeight(120)
-        self.player_panel.setStyleSheet("background:#181825; border-top:1px solid #313244;")
-        self.player_panel.hide()
-        pl = QHBoxLayout(self.player_panel)
-        pl.setContentsMargins(10, 6, 10, 6)
-        pl.setSpacing(10)
-
-        pl.addWidget(self.video_widget, 1)
-
-        ctrl = QVBoxLayout()
-        ctrl.setSpacing(4)
-
-        row1 = QHBoxLayout()
-        self.player_prev_btn = QPushButton("Previous")
-        self.player_prev_btn.setFixedWidth(45)
-        self.player_prev_btn.setToolTip("Previous")
-        self.player_prev_btn.clicked.connect(self._playlist_prev)
-        row1.addWidget(self.player_prev_btn)
-
-        self.player_play_btn = QPushButton("Play")
-        self.player_play_btn.setFixedWidth(70)
-        self.player_play_btn.clicked.connect(self._player_toggle)
-        row1.addWidget(self.player_play_btn)
-
-        self.player_next_btn = QPushButton("Next")
-        self.player_next_btn.setFixedWidth(45)
-        self.player_next_btn.setToolTip("Next")
-        self.player_next_btn.clicked.connect(self._playlist_next)
-        row1.addWidget(self.player_next_btn)
-
-        self.player_stop_btn = QPushButton("Stop")
-        self.player_stop_btn.setFixedWidth(70)
-        self.player_stop_btn.clicked.connect(self._player_stop)
-        row1.addWidget(self.player_stop_btn)
-
-        self.player_skip_back = QPushButton("Skip -10s")
-        self.player_skip_back.setFixedWidth(60)
-        self.player_skip_back.clicked.connect(lambda: self._player_skip(-10000))
-        row1.addWidget(self.player_skip_back)
-
-        self.player_skip_fwd = QPushButton("Skip +10s")
-        self.player_skip_fwd.setFixedWidth(60)
-        self.player_skip_fwd.clicked.connect(lambda: self._player_skip(10000))
-        row1.addWidget(self.player_skip_fwd)
-
-        self.player_speed = QComboBox()
-        self.player_speed.addItems(["0.5x", "1x", "1.5x", "2x"])
-        self.player_speed.setCurrentText("1x")
-        self.player_speed.setFixedWidth(60)
-        self.player_speed.currentTextChanged.connect(self._player_set_speed)
-        row1.addWidget(self.player_speed)
-
-        self.player_autoplay = QCheckBox("Autoplay next")
-        self.player_autoplay.setChecked(True)
-        self.player_autoplay.setStyleSheet("color:#a6adc8; font-size:11px;")
-        row1.addWidget(self.player_autoplay)
-
-        self.player_shuffle = QPushButton("Shuffle")
-        self.player_shuffle.setCheckable(True)
-        self.player_shuffle.setFixedWidth(70)
-        self.player_shuffle.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.player_shuffle.clicked.connect(lambda: self.player_shuffle.setChecked(not self.player_shuffle.isChecked()))
-        row1.addWidget(self.player_shuffle)
-
-        self.player_repeat = QPushButton("Repeat: All")
-        self.player_repeat.setCheckable(True)
-        self.player_repeat.setFixedWidth(85)
-        self.player_repeat.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.player_repeat_mode = "all"
-        self.player_repeat.clicked.connect(self._toggle_repeat)
-        row1.addWidget(self.player_repeat)
-
-        self.player_sleep = QPushButton("Sleep")
-        self.player_sleep.setCheckable(True)
-        self.player_sleep.setFixedWidth(60)
-        self.player_sleep.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.player_sleep.clicked.connect(self._toggle_sleep_timer)
-        row1.addWidget(self.player_sleep)
-        self._sleep_timer = QTimer()
-        self._sleep_timer.timeout.connect(self._sleep_timer_tick)
-        self._sleep_minutes = 0
-
-        self.player_eq = QComboBox()
-        self.player_eq.addItems(["EQ: Flat", "EQ: Bass Boost", "EQ: Vocal", "EQ: Treble"])
-        self.player_eq.setFixedWidth(95)
-        self.player_eq.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.player_eq.currentTextChanged.connect(self._set_eq)
-        row1.addWidget(self.player_eq)
-
-        self.player_mini = QPushButton("Mini Player")
-        self.player_mini.setFixedWidth(70)
-        self.player_mini.setToolTip("Open mini player")
-        self.player_mini.clicked.connect(self._open_mini_player)
-        row1.addWidget(self.player_mini)
-
-        self.btn_lyrics = QPushButton("Lyrics")
-        self.btn_lyrics.setFixedWidth(60)
-        self.btn_lyrics.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.btn_lyrics.clicked.connect(self._toggle_lyrics_panel)
-        row1.addWidget(self.btn_lyrics)
-
-        self.btn_album_art = QPushButton("Art")
-        self.btn_album_art.setFixedWidth(45)
-        self.btn_album_art.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.btn_album_art.clicked.connect(self._open_album_art_viewer)
-        row1.addWidget(self.btn_album_art)
-
-        self.btn_crossfade = QPushButton("Crossfade")
-        self.btn_crossfade.setCheckable(True)
-        self.btn_crossfade.setFixedWidth(70)
-        self.btn_crossfade.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.btn_crossfade.clicked.connect(self._toggle_crossfade)
-        row1.addWidget(self.btn_crossfade)
-
-        self.btn_gapless = QPushButton("Gapless")
-        self.btn_gapless.setCheckable(True)
-        self.btn_gapless.setFixedWidth(60)
-        self.btn_gapless.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.btn_gapless.clicked.connect(self._toggle_gapless)
-        row1.addWidget(self.btn_gapless)
-
-        self.btn_recent = QPushButton("Recent")
-        self.btn_recent.setFixedWidth(55)
-        self.btn_recent.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.btn_recent.clicked.connect(self._show_recently_played)
-        row1.addWidget(self.btn_recent)
-
-        self.player_time_lbl = QLabel("0:00 / 0:00")
-        self.player_time_lbl.setFixedWidth(90)
-        self.player_time_lbl.setStyleSheet("color:#a6adc8; font-size:11px;")
-        row1.addWidget(self.player_time_lbl)
-        row1.addStretch()
-        ctrl.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Pos:"))
-        self.player_pos_slider = QSlider(Qt.Orientation.Horizontal)
-        self.player_pos_slider.setRange(0, 0)
-        self.player_pos_slider.sliderMoved.connect(self._player_seek)
-        row2.addWidget(self.player_pos_slider, 1)
-
-        row2.addWidget(QLabel("Vol:"))
-        self.player_vol_slider = QSlider(Qt.Orientation.Horizontal)
-        self.player_vol_slider.setRange(0, 100)
-        self.player_vol_slider.setValue(70)
-        self.player_vol_slider.setFixedWidth(100)
-        self.player_vol_slider.valueChanged.connect(self._player_set_volume)
-        row2.addWidget(self.player_vol_slider)
-
-        self.player_file_lbl = QLabel("No file loaded")
-        self.player_file_lbl.setStyleSheet("color:#a6adc8; font-size:11px;")
-        self.player_file_lbl.setWordWrap(True)
-        row2.addWidget(self.player_file_lbl, 1)
-
-        ctrl.addLayout(row2)
-        pl.addLayout(ctrl, 1)
-
+        # Bottom: player bar
+        self.player_panel = PlayerBar(
+            self.player, self.audio_output, self.video_widget, self.theme, self
+        )
+        self.player_panel._on_prev = self._playlist_prev
+        self.player_panel._on_next = self._playlist_next
+        self.player_panel._on_stop = self._player_stop
         root.addWidget(self.player_panel)
 
         self.set_view("browser")
         self.apply_theme()
 
     def set_view(self, key):
-        for k, btn in self.nav_buttons.items():
-            btn.setChecked(k == key)
+        self.nav_rail.set_active(key)
         index = {"browser": 0, "search": 1, "trending": 2, "music": 3, "charts": 4, "video": 5,
                  "queue": 6, "library": 7, "settings": 8}[key]
         self.stack.setCurrentIndex(index)
@@ -1165,60 +993,7 @@ class YTDLPApp(QMainWindow):
     def apply_theme(self):
         app_cfg = self.config.get("app", {})
         theme = app_cfg.get("theme", "dark")
-
-        # System theme detection (Qt 6)
-        if theme == "system":
-            scheme = QApplication.styleHints().colorScheme()
-            theme = "light" if scheme == Qt.ColorScheme.Light else "dark"
-
-        if theme == "light":
-            bg, surface, input_bg, text, muted, border, primary, primary_hover = (
-                "#fafafa", "#ffffff", "#f5f5f5", "#1a1a1a", "#666666",
-                "#d0d0d0", "#2563eb", "#3b82f6",
-            )
-            card_bg = "#ffffff"
-            table_bg = "#ffffff"
-            header_bg = "#f0f0f0"
-            progress_bg = "#e5e5e5"
-        else:
-            bg, surface, input_bg, text, muted, border, primary, primary_hover = (
-                "#11111b", "#1e1e2e", "#181825", "#cdd6f4", "#a6adc8",
-                "#313244", "#89b4fa", "#b4befe",
-            )
-            card_bg = "#1e1e2e"
-            table_bg = "#181825"
-            header_bg = "#1e1e2e"
-            progress_bg = "#181825"
-
-        self.setStyleSheet(f"""
-            QMainWindow {{ background:{bg}; color:{text}; }}
-            QFrame#card {{ background:{card_bg}; border:1px solid {border};
-                          border-radius:8px; padding:12px; }}
-            QLabel {{ color:{text}; }}
-            QLineEdit, QTextEdit, QComboBox, QSpinBox {{
-                background:{input_bg}; border:1px solid {border};
-                border-radius:4px; padding:6px; color:{text};
-            }}
-            QPushButton {{ background:{border}; border:none; border-radius:4px;
-                          padding:6px 12px; color:{text}; }}
-            QPushButton:hover {{ background:{primary_hover}; color:{text}; }}
-            QPushButton#primary {{ background:{primary}; color:#11111b; font-weight:bold; }}
-            QPushButton#primary:hover {{ background:{primary_hover}; color:#11111b; }}
-            QPushButton#danger {{ background:#f38ba8; color:#11111b; }}
-            QPushButton#danger:hover {{ background:#f9a8b4; }}
-            QTableWidget {{ background:{table_bg}; border:1px solid {border};
-                           border-radius:4px; gridline-color:{border}; }}
-            QHeaderView::section {{ background:{header_bg}; color:{muted};
-                                   border:none; padding:6px; font-weight:bold; }}
-            QProgressBar {{ border:1px solid {border}; border-radius:4px;
-                           text-align:center; background:{progress_bg}; color:{text}; }}
-            QProgressBar::chunk {{ background:{primary}; border-radius:4px; }}
-            QTabWidget::pane {{ border:1px solid {border}; border-radius:4px;
-                               background:{surface}; }}
-            QTabBar::tab {{ background:{input_bg}; color:{muted}; padding:8px 16px;
-                           border-top-left-radius:4px; border-top-right-radius:4px; }}
-            QTabBar::tab:selected {{ background:{border}; color:{text}; }}
-        """)
+        self.theme.set_theme(theme)
 
     # ----- pages -----
     def _page_browser(self):
